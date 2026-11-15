@@ -4,3 +4,6 @@
 *.pdf
 hall-money-backup-*.json
 statements/
+
+# ...except the made-up practice files
+!hall-money-sorter/sample/*
