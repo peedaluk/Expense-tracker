@@ -96,6 +96,7 @@ kbd{font:12px ui-monospace,monospace;border:1px solid var(--line);border-radius:
 .card.big{border-width:2px}
 .card.big.pos{border-color:var(--hall)} .card.big.neg{border-color:var(--out)}
 .verdict{font-size:16px;padding:12px 14px;border-radius:10px;margin:10px 0;background:var(--soft)}
+.panel td{word-break:break-word}
 .bar{height:8px;background:var(--soft);border-radius:4px;overflow:hidden;min-width:80px}
 .bar i{display:block;height:100%;background:var(--accent)}
 .cols2{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px}
@@ -214,7 +215,7 @@ pre.sent{background:var(--soft);padding:8px;border-radius:8px;font-size:12px;whi
       <table>
         <thead><tr>
           <th>Date</th><th>Description</th><th class="num">Money out</th><th class="num">Money in</th>
-          <th>Belongs to</th><th>Hall category</th><th>Event</th><th>Note</th><th></th>
+          <th>Belongs to</th><th>Category</th><th>Event</th><th>Note</th><th></th>
         </tr></thead>
         <tbody id="txBody"></tbody>
       </table>
@@ -231,6 +232,7 @@ pre.sent{background:var(--soft);padding:8px;border-radius:8px;font-size:12px;whi
         <input type="number" id="opening" step="0.01" style="width:150px"></label>
       <button id="printBtn">Print / save as PDF</button>
       <button id="exportHallBtn">Download hall transactions (CSV)</button>
+      <button id="exportPersBtn">Download personal transactions (CSV)</button>
       <button id="exportAllBtn">Download all transactions (CSV)</button>
     </div>
   </div>
@@ -245,7 +247,7 @@ pre.sent{background:var(--soft);padding:8px;border-radius:8px;font-size:12px;whi
       <p class="muted small">If a description <b>contains</b> the text, the transaction is sorted automatically. Rules never change transactions you sorted yourself. Rules higher in the list win.</p>
       <div class="toolbar">
         <input id="ruleText" placeholder="text, e.g. sharma decor" style="flex:1;min-width:150px">
-        <select id="ruleOwner">
+        <select id="ruleOwner" onchange="$('#ruleCat').innerHTML=catOptions('', '— category —', this.value)">
           <option value="hall">🏠 Hall</option><option value="personal">👤 Personal</option><option value="transfer">🔁 Transfer</option>
         </select>
         <select id="ruleCat"></select>
@@ -266,9 +268,12 @@ pre.sent{background:var(--soft);padding:8px;border-radius:8px;font-size:12px;whi
         <div class="toolbar" style="margin-top:8px"><button id="aiSave" class="primary">Save</button><button class="aiBtn">🤖 Sort unsure ones now</button></div>
       </div>
       <div class="panel">
-        <h2>Hall categories</h2>
+        <h2>Categories</h2>
         <p class="muted small">One per line.</p>
-        <textarea id="catText" rows="9" style="width:100%"></textarea>
+        <div class="cols2" style="gap:10px">
+          <div class="field"><label>🏠 Hall</label><textarea id="catText" rows="10" style="width:100%"></textarea></div>
+          <div class="field"><label>👤 Personal</label><textarea id="pcatText" rows="10" style="width:100%"></textarea></div>
+        </div>
         <div class="toolbar" style="margin-top:8px">
           <label>Currency symbol <input id="currency" style="width:70px"></label>
           <button id="catSave" class="primary">Save</button>
@@ -349,7 +354,7 @@ pre.sent{background:var(--soft);padding:8px;border-radius:8px;font-size:12px;whi
     <div class="field"><label>Paid via / from</label><input id="nVia" value="Cash"></div>
     <div class="field" style="grid-column:1/-1"><label>Description</label><input id="nDesc" placeholder="e.g. Balloons from local shop for Diwali night"></div>
     <div class="field"><label>Belongs to</label><select id="nOwner"></select></div>
-    <div class="field"><label>Hall category</label><select id="nCat"></select></div>
+    <div class="field"><label>Category</label><select id="nCat"></select></div>
     <div class="field"><label>Event</label><input id="nEvent" list="eventList"></div>
     <div class="field"><label>Note</label><input id="nNote"></div>
   </div>
@@ -377,11 +382,13 @@ const DEFAULT_CATEGORIES = ['Food & Snacks','Decorations','Events & Fests','Spor
   'Maintenance & Repairs','Cleaning & Supplies','Electronics & Sound','Transport','Gifts & Prizes','Hall income','Miscellaneous'];
 // Credit card bill payments are moving your own money, not new spending.
 const DEFAULT_RULES = ['credit card payment','cc payment','card payment','creditcard','payment received','payment - thank you','thank you for your payment','cred club','autopay'];
+const DEFAULT_PERSONAL = ['Food & Eating out','Food delivery','Groceries','Shopping','Travel & Transport','Recharge & Bills',
+  'Subscriptions','Entertainment','Health & Personal care','College & Studies','Friends & Family','Cash spending','Income','Other'];
 const OWNERS = {unsure:'❓ Unsure', hall:'🏠 Hall', personal:'👤 Personal', transfer:'🔁 Transfer / card bill'};
 
 function uid(){ return Math.random().toString(36).slice(2,9) + Date.now().toString(36).slice(-4); }
 function fresh(){
-  return { version:1, txns:[], files:[], categories:[...DEFAULT_CATEGORIES],
+  return { version:1, txns:[], files:[], categories:[...DEFAULT_CATEGORIES], personalCategories:[...DEFAULT_PERSONAL],
     rules: DEFAULT_RULES.map(text => ({id:uid(), text, owner:'transfer', category:''})),
     settings:{ opening:0, currency:'₹' } };
 }
@@ -441,9 +448,12 @@ function ownerOptions(sel, includeUnsure=true){
   return Object.entries(OWNERS).filter(([k])=>includeUnsure||k!=='unsure')
     .map(([k,v])=>`<option value="${k}"${k===sel?' selected':''}>${v}</option>`).join('');
 }
-function catOptions(sel, blank='— category —'){
-  return `<option value="">${blank}</option>` + state.categories
-    .map(c=>`<option${c===sel?' selected':''}>${esc(c)}</option>`).join('');
+function catsFor(owner){ return owner==='hall' ? state.categories : owner==='personal' ? state.personalCategories : []; }
+// owner 'hall' / 'personal' → that list only; anything else → both lists in groups
+function catOptions(sel, blank='— category —', owner){
+  const opt = c => `<option value="${esc(c)}"${c===sel?' selected':''}>${esc(c)}</option>`;
+  if(owner==='hall' || owner==='personal') return `<option value="">${blank}</option>` + catsFor(owner).map(opt).join('');
+  return `<option value="">${blank}</option><optgroup label="🏠 Hall">${state.categories.map(opt).join('')}</optgroup><optgroup label="👤 Personal">${state.personalCategories.map(opt).join('')}</optgroup>`;
 }
 let toastTimer;
 function toast(msg, actionLabel, action){
@@ -574,7 +584,8 @@ function guessColumns(row){
   const debit = h.findIndex((c,i)=>i!==drcr && /debit|withdraw|money out|paid out/.test(c));
   const credit = h.findIndex((c,i)=>i!==drcr && i!==debit && /credit|deposit|money in|paid in/.test(c));
   const amount = h.findIndex((c,i)=>i!==debit && i!==credit && /amount|amt/.test(c));
-  return {date, desc, debit, credit, amount, drcr};
+  const balance = h.findIndex(c=>/balance/.test(c));
+  return {date, desc, debit, credit, amount, drcr, balance};
 }
 
 /* ---------- turning rows into transactions ---------- */
@@ -602,7 +613,8 @@ function buildTxns(rows, map){
     }
     if(!amount){ skipped++; continue; }
     const desc = map.desc>=0 ? String(r[map.desc]??'').replace(/\s+/g,' ').trim() : '';
-    out.push({date, desc: desc || '(no description)', amount: r2(amount), dir});
+    const bal = map.balance>=0 ? parseAmount(r[map.balance]) : null;
+    out.push({date, desc: desc || '(no description)', amount: r2(amount), dir, ...(bal ? {bal: bal.crdr==='dr' ? -bal.value : bal.value} : {})});
   }
   return {txns:out, skipped};
 }
@@ -625,10 +637,16 @@ const KB = [
   {re:/refund|reversal|reversed|cashback/, special:'refund'},
   {re:/hall ?fund|hall ?budget|student ?affairs|\bdean\b|warden|hostel ?(office|fund|council)|gymkhana|student ?council|sponsor/, dir:'in', owner:'hall', cat:'Hall income', conf:'high', why:'Money from the hall/college or a sponsor'},
   {re:/hall ?fee|mess ?fee|event ?fee|contribution|\bfees?\b|registration|\bhall\b/, dir:'in', owner:'hall', cat:'Hall income', conf:'medium', why:'Looks like fees or contributions for the hall'},
-  {re:/salary|stipend|pocket ?money|\bmom\b|\bdad\b|\bpapa\b|\bmummy\b|\bmaa\b|scholarship|interest|int\.?\s?pd/, dir:'in', owner:'personal', conf:'high', why:'Looks like your own or family money'},
-  {re:/netflix|spotify|prime ?video|hotstar|jiocinema|youtube|apple\.com|itunes|google ?play|airtel|\bjio\b|vodafone|\bvi ?prepaid|recharge|myntra|ajio|nykaa|meesho|blinkit|zepto|instamart|bigbasket|gym|salon|barber/, dir:'out', owner:'personal', conf:'high', why:'Usually personal (subscriptions, recharge, own shopping)'},
+  {re:/salary|stipend|pocket ?money|\bmom\b|\bdad\b|\bpapa\b|\bmummy\b|\bmaa\b|scholarship|interest|int\.?\s?pd/, dir:'in', owner:'personal', pcat:'Income', conf:'high', why:'Looks like your own or family money'},
+  {re:/netflix|spotify|prime ?video|hotstar|jiocinema|youtube|apple\.com|itunes|google ?play/, dir:'out', owner:'personal', pcat:'Subscriptions', conf:'high', why:'Subscription, usually personal'},
+  {re:/airtel|\bjio\b|vodafone|\bvi ?prepaid|recharge|electricity|broadband/, dir:'out', owner:'personal', pcat:'Recharge & Bills', conf:'high', why:'Phone recharge / bill, usually personal'},
+  {re:/myntra|ajio|nykaa|meesho/, dir:'out', owner:'personal', pcat:'Shopping', conf:'high', why:'Clothes / personal shopping'},
+  {re:/blinkit|zepto|instamart|bigbasket/, dir:'out', owner:'personal', pcat:'Groceries', conf:'high', why:'Grocery delivery, usually personal'},
+  {re:/\bgym\b|salon|barber|pharma|medical|chemist|apollo|hospital|clinic/, dir:'out', owner:'personal', pcat:'Health & Personal care', conf:'high', why:'Health / personal care'},
   {re:/swiggy|zomato|eatsure|dunzo/, dir:'out', special:'food'},
-  {re:/uber|\bola\b|rapido|irctc|makemytrip|redbus|goibibo|indigo|bookmyshow|\bpvr\b|inox|starbucks|domino|pizza|kfc|mcdonald|burger|cafe coffee/, dir:'out', owner:'personal', conf:'medium', why:'Usually personal, but could be for a hall event'},
+  {re:/uber|\bola\b|rapido|irctc|makemytrip|redbus|goibibo|indigo|air india|railway/, dir:'out', owner:'personal', pcat:'Travel & Transport', conf:'medium', why:'Travel, usually personal'},
+  {re:/bookmyshow|\bpvr\b|inox|steam|playstation/, dir:'out', owner:'personal', pcat:'Entertainment', conf:'medium', why:'Entertainment, usually personal'},
+  {re:/starbucks|domino|pizza|kfc|mcdonald|burger|cafe coffee|restaurant|dhaba/, dir:'out', owner:'personal', pcat:'Food & Eating out', conf:'medium', why:'Eating out, usually personal (unless it was a hall treat)'},
   {re:/caterers?\b|catering/, dir:'out', owner:'hall', cat:'Food & Snacks', conf:'high', why:'Caterer'},
   {re:/tiffin|mithai|sweets|bakery|snacks|juice|tea stall|canteen|\bmess\b/, dir:'out', owner:'hall', cat:'Food & Snacks', conf:'medium', why:'Food vendor (sweets, snacks, canteen)'},
   {re:/decor|balloon|florist|flowers?\b|party ?supplies|tent ?house|\btent\b|shamiana|lighting|rangoli/, dir:'out', owner:'hall', cat:'Decorations', conf:'high', why:'Decorations / event supplies vendor'},
@@ -642,9 +660,9 @@ const KB = [
   {re:/fest\b|freshers|farewell|diwali|holi\b|navratri|garba|christmas|new year|party|celebration|\bevent\b|cultural|\bnight\b/, dir:'out', owner:'hall', cat:'Events & Fests', conf:'medium', why:'Mentions an event or celebration'},
   {re:/tempo|transport|courier|porter/, dir:'out', owner:'hall', cat:'Transport', conf:'medium', why:'Transport / delivery, often for events'},
   {re:/amazon|flipkart|big ?bazaar|dmart|reliance (fresh|smart|digital)|supermarket|mart\b/, owner:'unsure', why:'Shopping that could be for you or the hall. Check your order history.'},
-  {re:/\batm\b|\bnwd\b|cash ?w|withdraw|\bcwdr?\b/, owner:'unsure', why:'Cash withdrawal. Use Split if part of it went to the hall.'},
+  {re:/\batm\b|\bnwd\b|cash ?w|withdraw|\bcwdr?\b/, owner:'unsure', pcat:'Cash spending', why:'Cash withdrawal. Use Split if part of it went to the hall.'},
 ];
-function catOk(c){ return c && state.categories.includes(c) ? c : ''; }
+function catOk(c, owner='hall'){ return c && catsFor(owner).includes(c) ? c : ''; }
 function kbGuess(t, d, ignoreDir){
   for(const k of KB){
     if(!k.re.test(d) || (!ignoreDir && k.dir && k.dir!==t.dir)) continue;
@@ -656,8 +674,8 @@ function kbGuess(t, d, ignoreDir){
     }
     if(k.special==='food'){
       if(t.amount>=1500) return {owner:'hall', cat:'Food & Snacks', conf:'medium', why:`Big food order (${money(t.amount)}), maybe for the hall`};
-      if(t.amount<700) return {owner:'personal', conf:'high', why:'Small food-delivery order, usually personal'};
-      return {owner:'personal', conf:'medium', why:'Food-delivery order, usually personal'};
+      if(t.amount<700) return {owner:'personal', pcat:'Food delivery', conf:'high', why:'Small food-delivery order, usually personal'};
+      return {owner:'personal', pcat:'Food delivery', conf:'medium', why:'Food-delivery order, usually personal'};
     }
     return k;
   }
@@ -668,10 +686,11 @@ function buildLearned(){
   for(const t of state.txns){
     if(!t.manual || t.owner==='unsure') continue;
     const kw = suggestKeyword(t.desc); if(!kw) continue;
-    const e = m.get(kw) || {n:0, owners:{}, cats:{}, max:0, min:Infinity};
+    const e = m.get(kw) || {n:0, owners:{}, cats:{in:{}, out:{}}, amt:{}};
     e.n++; e.owners[t.owner]=(e.owners[t.owner]||0)+1;
-    if(t.category) e.cats[t.category]=(e.cats[t.category]||0)+1;
-    e.max=Math.max(e.max,t.amount); e.min=Math.min(e.min,t.amount);
+    if(t.category) e.cats[t.dir][t.category]=(e.cats[t.dir][t.category]||0)+1;
+    const a = e.amt[t.dir] || (e.amt[t.dir] = {max:0, min:Infinity});
+    a.max=Math.max(a.max,t.amount); a.min=Math.min(a.min,t.amount);
     m.set(kw,e);
   }
   // same amount received from 3+ different senders → looks like a collection (hall fees)
@@ -681,20 +700,33 @@ function buildLearned(){
 }
 const topEntry = obj => Object.entries(obj).sort((a,b)=>b[1]-a[1])[0];
 function smartGuess(t, L){
-  const d = norm(t.desc), kw = suggestKeyword(t.desc);
-  const e = kw && L.m.get(kw);
-  if(e){
-    const [owner,n] = topEntry(e.owners), share = n/e.n;
-    const cat = owner==='hall' && Object.keys(e.cats).length ? topEntry(e.cats)[0] : '';
-    const odd = t.amount > 3*e.max || t.amount < e.min/3;
-    const why = `You sorted ${e.n} similar “${kw}” transaction${e.n>1?'s':''} as ${OWNERS[owner].slice(2).trim()}` + (odd?', but this amount is very different':'');
-    return {owner, category:catOk(cat), conf: share>=0.8 && !odd ? 'high' : 'medium', reason:why, src:'smart', learned:true};
+  const d = norm(t.desc);
+  const lg = learnedGuess(t, L), k = kbGuess(t, d);
+  const kg = k ? {owner:k.owner, category: k.owner==='hall' ? catOk(k.cat,'hall') : k.owner==='personal' ? catOk(k.pcat,'personal') : '', conf:k.conf||'low', reason:k.why, src:'smart'} : null;
+  if(lg && kg && lg.owner===kg.owner){
+    // both agree: confident if either is, and fill in the category from whichever has one
+    return {...lg, category: lg.category || kg.category, conf: lg.conf==='high' || kg.conf==='high' ? 'high' : 'medium'};
   }
-  const k = kbGuess(t, d);
-  if(k) return {owner:k.owner, category: k.owner==='hall' ? catOk(k.cat) : '', conf:k.conf||'low', reason:k.why, src:'smart'};
+  if(lg && lg.conf==='high') return lg;
+  if(lg && kg && kg.conf==='high' && kg.owner!=='unsure') return {...lg, conf:'medium', reason: lg.reason + ` (but it also looks like: ${kg.reason.toLowerCase()})`};
+  if(lg) return lg;
+  if(kg) return kg;
   if(t.dir==='in'){
     const senders = L.inAmts.get(t.amount.toFixed(2));
     if(senders && senders.size>=3) return {owner:'hall', category:catOk('Hall income'), conf:'medium', reason:`${senders.size} different people sent exactly ${money(t.amount)}. Looks like a hall collection.`, src:'smart'};
+  }
+  return null;
+}
+function learnedGuess(t, L){
+  const kw = suggestKeyword(t.desc);
+  const e = kw && L.m.get(kw);
+  if(e){
+    const [owner,n] = topEntry(e.owners), share = n/e.n;
+    const owned = Object.entries(e.cats[t.dir]).filter(([c])=>catsFor(owner).includes(c)); const cat = owned.length ? owned.sort((a,b)=>b[1]-a[1])[0][0] : '';
+    const a = e.amt[t.dir];
+    const odd = !!a && (t.amount > 3*a.max || t.amount < a.min/3);
+    const why = `You sorted ${e.n} similar “${kw}” transaction${e.n>1?'s':''} as ${OWNERS[owner].slice(2).trim()}` + (odd?', but this amount is very different':'');
+    return {owner, category:catOk(cat, owner), conf: share>=0.8 && !odd ? 'high' : 'medium', reason:why, src:'smart', learned:true};
   }
   return null;
 }
@@ -706,7 +738,7 @@ function applyRules(){
     t.by=null; t.byRule=null; t.reason=''; t.sugg=null; t.owner='unsure'; t.category='';
     if(prevEventAuto){ t.event=''; t.eventAuto=false; }
     const r = matchRule(t);
-    if(r){ t.owner=r.owner; t.category = r.owner==='hall' ? catOk(r.category) : ''; t.by='rule'; t.byRule=r.id; t.reason=`Your rule: contains “${r.text}”`; continue; }
+    if(r){ t.owner=r.owner; t.category = catOk(r.category, r.owner); t.by='rule'; t.byRule=r.id; t.reason=`Your rule: contains “${r.text}”`; continue; }
     // Priority: your own past choices (confident) → AI answer → built-in knowledge.
     const sg = smartGuess(t, L), ai = t.ai ? {...t.ai, src:'ai'} : null;
     let g = ai || sg;
@@ -714,14 +746,14 @@ function applyRules(){
     else if(ai && ai.owner==='unsure' && sg && sg.owner!=='unsure') g = sg;
     if(!g) continue;
     if(g.owner!=='unsure' && g.conf==='high'){
-      t.owner=g.owner; t.category = g.owner==='hall' ? catOk(g.category) : ''; t.by=g.src; t.reason=g.reason;
+      t.owner=g.owner; t.category = catOk(g.category, g.owner); t.by=g.src; t.reason=g.reason;
       if(g.event && !t.event){ t.event=g.event; t.eventAuto=true; }
     } else t.sugg = g;
   }
 }
 function setManual(t, owner, category){
   t.owner=owner; t.manual = owner!=='unsure'; t.by=null; t.byRule=null; t.reason=''; t.sugg=null; t.eventAuto=false;
-  t.category = owner==='hall' ? (category||'') : '';
+  t.category = catOk(category, owner);
 }
 const isAutoUnchecked = t => !t.manual && (t.by==='smart' || t.by==='ai');
 const srcLabel = s => s==='ai' ? '🤖 AI' : s==='rule' ? 'your rule' : '💡 smart guess';
@@ -729,7 +761,7 @@ function addRule(text, owner, category){
   text = norm(text);
   if(!text) return;
   state.rules = state.rules.filter(r=>norm(r.text)!==text);
-  state.rules.unshift({id:uid(), text, owner, category: owner==='hall' ? (category||'') : ''});
+  state.rules.unshift({id:uid(), text, owner, category: catOk(category, owner)});
 }
 const STOP = new Set(('upi imps neft rtgs pos ach nach ecom txn ref payment paid pay paym to from by via the and of for pvt ltd private limited india bank '+
   'ybl okaxis oksbi okicici okhdfcbank paytm paytmqr axl ibl apl yesbank yespay icici hdfc sbi axis kotak mb ib inb debit credit card purchase '+
@@ -925,7 +957,15 @@ $('#mOk').onclick = ()=>{
     if(seen[t.origKey] <= (existing[t.origKey]||0)){ dup++; continue; }
     state.txns.push(t); added++;
   }
-  state.files.push({id:fileId, name:cur.file.name, source:m.source, sourceType:m.sourceType, importedAt:new Date().toISOString()});
+  const fileRec = {id:fileId, name:cur.file.name, source:m.source, sourceType:m.sourceType, importedAt:new Date().toISOString()};
+  // Opening/closing bank balance from the statement's Balance column (statements can be oldest- or newest-first)
+  const withBal = txns.filter(t=>typeof t.bal==='number');
+  if(m.sourceType==='bank' && withBal.length===txns.length && txns.length){
+    const ordered = txns[0].date > txns[txns.length-1].date ? [...txns].reverse() : txns;
+    const f = ordered[0], l = ordered[ordered.length-1];
+    Object.assign(fileRec, {openingBal: r2(f.bal - (f.dir==='in' ? f.amount : -f.amount)), closingBal: l.bal, startDate: f.date, endDate: l.date});
+  }
+  state.files.push(fileRec);
   applyRules();
   $('#mapDlg').close(); cur=null;
   commit();
@@ -968,7 +1008,7 @@ function renderReview(){
   const near = state.txns.filter(o=>o.id!==t.id && Math.abs(new Date(o.date)-new Date(t.date))<=2*864e5).sort(byDate).slice(0,8);
   const total = state.txns.length, done = state.txns.filter(x=>x.manual || x.by==='rule').length;
   const sBox = s && s.owner && s.owner!=='unsure'
-    ? `<div class="sugg"><div class="t">${reviewMode==='check'?'Sorted automatically as':'Suggestion:'} <span class="pill ${s.owner}">${OWNERS[s.owner]}</span>${s.owner==='hall'&&s.category?` <b>${esc(s.category)}</b>`:''}${s.event?` · ${esc(s.event)}`:''}
+    ? `<div class="sugg"><div class="t">${reviewMode==='check'?'Sorted automatically as':'Suggestion:'} <span class="pill ${s.owner}">${OWNERS[s.owner]}</span>${s.category?` <b>${esc(s.category)}</b>`:''}${s.event?` · ${esc(s.event)}`:''}
         <div class="small muted">${srcLabel(s.src)}: ${esc(s.reason||'')}</div></div>
         <button class="primary" data-accept="1">✓ ${reviewMode==='check'?'Correct':'Accept'}<kbd>Enter</kbd></button></div>`
     : s && s.reason ? `<div class="hint">${srcLabel(s.src)}: ${esc(s.reason)}</div>` : '';
@@ -981,7 +1021,7 @@ function renderReview(){
     ${(()=>{ const tr=parseTransfer(t.desc); return tr ? `<p style="margin-top:-6px"><b>${t.dir==='out'?'Paid to':'Received from'}: ${esc(tr.name)}</b>${tr.note?` · note: “${esc(tr.note)}”`:''}</p>` : ''; })()}
     ${sBox}
     <div class="grid2">
-      <div class="field"><label>Hall category (if hall)</label><select id="rvCat">${catOptions(preCat)}</select></div>
+      <div class="field"><label>Category (optional)</label><select id="rvCat">${catOptions(preCat)}</select></div>
       <div class="field"><label>Event (optional)</label><input id="rvEvent" list="eventList" value="${esc(preEvent)}" placeholder="e.g. Diwali Night"></div>
       <div class="field" style="grid-column:1/-1"><label>Note (optional)</label><input id="rvNote" value="${esc(t.note)}" placeholder="e.g. 200 chairs rent, receipt with Rahul"></div>
     </div>
@@ -1075,7 +1115,7 @@ function renderSort(){
     <td class="num out">${t.dir==='out'?money(t.amount):''}</td>
     <td class="num in">${t.dir==='in'?money(t.amount):''}</td>
     <td><select data-f="owner">${ownerOptions(t.owner)}</select></td>
-    <td><select data-f="category" ${t.owner!=='hall'?'disabled':''}>${catOptions(t.category)}</select></td>
+    <td><select data-f="category" ${t.owner!=='hall'&&t.owner!=='personal'?'disabled':''}>${catOptions(t.category, '— category —', t.owner)}</select></td>
     <td><input data-f="event" list="eventList" value="${esc(t.event)}"></td>
     <td><input data-f="note" value="${esc(t.note)}"></td>
     <td style="white-space:nowrap"><button data-a="split" title="Split into two parts">✂️</button> <button data-a="del" class="danger" title="Delete">✕</button></td>
@@ -1087,7 +1127,7 @@ $('#txBody').addEventListener('change', e=>{
   const f = e.target.dataset.f; if(!f) return;
   const t = state.txns.find(x=>x.id===e.target.closest('tr').dataset.id);
   if(f==='owner'){
-    const v=e.target.value; setManual(t, v, v==='hall' ? (t.category || (t.sugg&&t.sugg.owner==='hall'?t.sugg.category:'') || '') : '');
+    const v=e.target.value; setManual(t, v, catOk(t.category, v) || (t.sugg&&t.sugg.owner===v ? t.sugg.category : ''));
     applyRules();
     save(); renderCounts(); renderSort();
     const kw = suggestKeyword(t.desc), n = countSimilarUnsure(kw, t.id);
@@ -1108,7 +1148,7 @@ $('#bulkApply').onclick = ()=>{
   const list = filtered(), owner=$('#bulkOwner').value, cat=$('#bulkCat').value;
   if(!list.length) return;
   if(!confirm(`Mark all ${list.length} shown transactions as ${OWNERS[owner]}${owner==='hall'&&cat?' / '+cat:''}?`)) return;
-  for(const t of list) setManual(t, owner, owner==='hall' ? (cat||t.category||t.sugg?.category||'') : '');
+  for(const t of list) setManual(t, owner, catOk(cat, owner) || catOk(t.category, owner) || (t.sugg?.owner===owner ? t.sugg.category : ''));
   if($('#bulkRule').checked && $('#fSearch').value.trim() && owner!=='unsure') addRule($('#fSearch').value, owner, cat);
   applyRules(); commit();
 };
@@ -1141,17 +1181,17 @@ $('#splitOk').onclick = ()=>{
 /* ---------- manual entry ---------- */
 $('#addManualBtn').onclick = ()=>{
   $('#nDate').value = new Date().toISOString().slice(0,10); $('#nAmt').value=''; $('#nDesc').value=''; $('#nEvent').value=''; $('#nNote').value='';
-  $('#nOwner').innerHTML = ownerOptions('hall', false); $('#nCat').innerHTML = catOptions('');
+  $('#nOwner').innerHTML = ownerOptions('hall', false); $('#nCat').innerHTML = catOptions('', '— category —', 'hall'); $('#nCat').disabled=false;
   $('#manualDlg').showModal();
 };
-$('#nOwner').addEventListener('change', ()=>{ $('#nCat').disabled = $('#nOwner').value!=='hall'; });
+$('#nOwner').addEventListener('change', ()=>{ const o=$('#nOwner').value; $('#nCat').innerHTML = catOptions('', '— category —', o); $('#nCat').disabled = o!=='hall' && o!=='personal'; });
 $('#nCancel').onclick = ()=>$('#manualDlg').close();
 $('#nOk').onclick = ()=>{
   const amt = r2(parseFloat($('#nAmt').value)), date=$('#nDate').value, desc=$('#nDesc').value.trim();
   if(!(amt>0) || !date || !desc){ alert('Please fill in the date, amount and description.'); return; }
   const owner = $('#nOwner').value;
   state.txns.push({id:uid(), fileId:null, date, desc, amount:amt, dir:$('#nDir').value, source:$('#nVia').value.trim()||'Cash', sourceType:'cash',
-    owner, category: owner==='hall'?$('#nCat').value:'', event:$('#nEvent').value.trim(), note:$('#nNote').value.trim(), manual:true, byRule:null, origKey:null,
+    owner, category: catOk($('#nCat').value, owner), event:$('#nEvent').value.trim(), note:$('#nNote').value.trim(), manual:true, byRule:null, origKey:null,
     seq: state.txns.reduce((a,t)=>Math.max(a,t.seq||0),0)+1});
   $('#manualDlg').close(); commit(); toast('Entry added.');
 };
@@ -1214,8 +1254,81 @@ function renderSummary(){
       [...new Set(hall.map(t=>t.date.slice(0,7)))].sort().map(m=>`<tr><td>${monthLabel(m)}</td><td class="num in">${money(sum(hallIn.filter(t=>t.date.startsWith(m))))}</td><td class="num out">${money(sum(hallOut.filter(t=>t.date.startsWith(m))))}</td></tr>`).join('') || '<tr><td colspan="3" class="muted">Nothing yet.</td></tr>'}
     </tbody></table></div>
     <div class="panel"><h3>Hall money received</h3>${hallIn.length?`<table><tbody>${hallIn.sort(byDate).map(t=>`<tr><td style="white-space:nowrap">${niceDate(t.date)}</td><td>${esc(t.desc)}${t.note?`<div class="small muted">${esc(t.note)}</div>`:''}</td><td class="num in">${money(t.amount)}</td></tr>`).join('')}</tbody></table>`:'<p class="muted small">No money in has been marked as Hall yet. If the hall fund or contributions came into your account, find those entries and mark them 🏠 Hall.</p>'}</div>
+  </div>
+  ${personalHTML(C, uns)}`;
+}
+/* ---------- personal money & "how much of my balance is mine" ---------- */
+function bankBalances(){
+  const bySrc = {};
+  for(const f of state.files){
+    if(f.sourceType!=='bank' || typeof f.closingBal!=='number') continue;
+    const b = bySrc[f.source] || (bySrc[f.source] = {first:f, last:f});
+    if(f.startDate < b.first.startDate) b.first = f;
+    if(f.endDate > b.last.endDate) b.last = f;
+  }
+  const list = Object.values(bySrc);
+  if(!list.length) return null;
+  return { opening: r2(list.reduce((a,b)=>a+b.first.openingBal,0)), closing: r2(list.reduce((a,b)=>a+b.last.closingBal,0)),
+    startDate: list.map(b=>b.first.startDate).sort()[0], endDate: list.map(b=>b.last.endDate).sort().pop() };
+}
+function personalHTML(C, uns){
+  const P = state.txns.filter(t=>t.owner==='personal');
+  const pIn = P.filter(t=>t.dir==='in'), pOut = P.filter(t=>t.dir==='out');
+  const I = sum(pIn), O = sum(pOut);
+  const via = k => sum(pOut.filter(t=>t.sourceType===k));
+  const card = state.txns.filter(t=>t.sourceType==='card');
+  const cardDue = r2(sum(card.filter(t=>t.dir==='out')) - sum(card.filter(t=>t.dir==='in')));
+  const bb = bankBalances();
+  const manualClose = typeof state.settings.bankClosing==='number' ? state.settings.bankClosing : null;
+  const closing = manualClose ?? bb?.closing ?? null;
+  const held = Math.max(C,0);
+  let acct;
+  if(closing===null){
+    acct = `<p>Type your bank balance from the <b>last line of your latest statement</b> above, and I'll show how much of it is yours and how much belongs to the hall.</p>`;
+  } else {
+    const own = r2(closing - held);
+    let msg;
+    if(C<=0) msg = `✅ All of your bank balance (<b>${money(closing)}</b>) is <b>your own money</b>. On top of that, <b>the hall owes you ${money(-C)}</b>.`;
+    else if(own>=0) msg = `Of your bank balance of <b>${money(closing)}</b>, <b>${money(held)}</b> belongs to the <b>hall</b> and <b>${money(own)}</b> is <b>your own money</b>.`;
+    else msg = `⚠️ Your bank balance (<b>${money(closing)}</b>) is <b>${money(-own)} less</b> than the hall money you should be holding (<b>${money(held)}</b>). So about <b>${money(-own)}</b> of hall money has gone on personal spending, or is lying as cash. You would need to put <b>${money(-own)}</b> back for the hall.`;
+    acct = `<div class="cards">
+        <div class="card"><div class="k">Bank balance${bb&&manualClose===null?' on '+niceDate(bb.endDate):''}</div><div class="v">${money(closing)}</div></div>
+        <div class="card"><div class="k">Belongs to the hall</div><div class="v">${money(held)}</div></div>
+        <div class="card big ${own>=0?'pos':'neg'}"><div class="k">${own>=0?'Your own money':'Hall money you used'}</div><div class="v">${money(Math.abs(own))}</div></div>
+      </div><div class="verdict">${msg}</div>`;
+    if(bb && manualClose===null){
+      const startOwn = r2(bb.opening - (+state.settings.opening||0));
+      acct += `<p class="small muted">At the start (${niceDate(bb.startDate)}) your bank balance was ${money(bb.opening)}, of which ${money(startOwn)} was your own. Since then: personal money in ${money(I)}, personal spending ${money(O)}.</p>`;
+    }
+  }
+  return `<div class="panel">
+    <h2>👤 Your personal money</h2>
+    <div class="cards">
+      <div class="card"><div class="k">Personal money received</div><div class="v in">${money(I)}</div><div class="small muted">${pIn.length} transactions</div></div>
+      <div class="card"><div class="k">Personal spending</div><div class="v out">${money(O)}</div><div class="small muted">Bank ${money(via('bank'))} · Card ${money(via('card'))}${via('cash')?' · Cash '+money(via('cash')):''}</div></div>
+    </div>
+    <div class="cols2">
+      <div><h3>Personal spending by category</h3>${barTable(groupSum(pOut, t=>t.category||'Uncategorised'), O, 'Category')}</div>
+      <div><h3>By month</h3><table><thead><tr><th>Month</th><th class="num">In</th><th class="num">Spent</th></tr></thead><tbody>${
+        [...new Set(P.map(t=>t.date.slice(0,7)))].sort().map(m=>`<tr><td>${monthLabel(m)}</td><td class="num in">${money(sum(pIn.filter(t=>t.date.startsWith(m))))}</td><td class="num out">${money(sum(pOut.filter(t=>t.date.startsWith(m))))}</td></tr>`).join('') || '<tr><td colspan="3" class="muted">Nothing yet.</td></tr>'}</tbody></table></div>
+    </div>
+  </div>
+  <div class="panel">
+    <h2>🏦 How much of your bank balance is yours?</h2>
+    <div class="toolbar no-print"><label>Bank balance at the end of your latest statement:
+      <input type="number" step="0.01" id="bankClosing" style="width:160px" value="${manualClose ?? ''}" placeholder="${bb ? bb.closing : 'e.g. 9419.00'}"></label>
+      <span class="small muted">${bb ? `Read from your statement: ${money(bb.closing)} on ${niceDate(bb.endDate)}. Only type here to change it.` : ''}</span></div>
+    ${acct}
+    ${uns.length?`<p class="small muted">⚠️ ${uns.length} transactions are still unsure, so these numbers can still change.</p>`:''}
+    ${cardDue>0?`<p class="small muted">💳 ${money(cardDue)} of credit card spending in these statements hasn't been paid off yet. When you pay that bill, it comes out of your bank balance.</p>`:''}
   </div>`;
 }
+document.addEventListener('change', e=>{
+  if(e.target.id!=='bankClosing') return;
+  const v = parseFloat(e.target.value);
+  state.settings.bankClosing = isNaN(v) ? null : r2(v);
+  commit();
+});
 $('#opening').addEventListener('change', e=>{ state.settings.opening = r2(parseFloat(e.target.value)||0); commit(); });
 $('#printBtn').onclick = ()=>window.print();
 function exportRows(list, withOwner){
@@ -1223,14 +1336,16 @@ function exportRows(list, withOwner){
   return [head, ...list.sort(byDate).map(t=>[t.date, t.desc, t.dir==='out'?'Out':'In', t.amount.toFixed(2), ...(withOwner?[t.owner]:[]), t.category, t.event, t.source, t.note])];
 }
 $('#exportHallBtn').onclick = ()=>download('hall-transactions.csv', toCSV(exportRows(state.txns.filter(t=>t.owner==='hall'), false)), 'text/csv');
+$('#exportPersBtn').onclick = ()=>download('personal-transactions.csv', toCSV(exportRows(state.txns.filter(t=>t.owner==='personal'), false)), 'text/csv');
 $('#exportAllBtn').onclick = ()=>download('all-transactions-sorted.csv', toCSV(exportRows([...state.txns], true)), 'text/csv');
 
 /* ============================================================
    SETTINGS
    ============================================================ */
 function renderSettings(){
-  $('#ruleCat').innerHTML = catOptions('', '— category —');
+  $('#ruleCat').innerHTML = catOptions('', '— category —', $('#ruleOwner').value);
   $('#catText').value = state.categories.join('\n');
+  $('#pcatText').value = state.personalCategories.join('\n');
   $('#currency').value = state.settings.currency;
   $('#apiKey').value = apiKey; let rem=false; try{ rem=!!localStorage.getItem(KEY_LS); }catch(e){} $('#apiRemember').checked = rem;
   $('#aiContext').value = state.settings.aiContext || '';
@@ -1247,6 +1362,8 @@ $('#ruleAdd').onclick = ()=>{
 $('#catSave').onclick = ()=>{
   const cats = [...new Set($('#catText').value.split('\n').map(s=>s.trim()).filter(Boolean))];
   if(cats.length) state.categories = cats;
+  const pc = [...new Set($('#pcatText').value.split('\n').map(s=>s.trim()).filter(Boolean))];
+  if(pc.length) state.personalCategories = pc;
   state.settings.currency = $('#currency').value.trim() || '₹';
   commit(); toast('Saved.');
 };
@@ -1302,12 +1419,12 @@ For each transaction choose:
 
 Use "high" confidence only when the description (or the president's notes and examples) makes it clear; the app applies high-confidence answers automatically and shows the rest to the president as suggestions. Payments to or from individual people are usually unclear unless the notes or examples explain them. Large purchases from vendors around event dates lean hall; small everyday purchases lean personal. Follow the president's own past choices when a transaction is similar.
 
-For hall transactions pick the closest category (use "" for anything else). Fill "event" only when the transaction clearly belongs to one of the listed events by name or date; otherwise "". Keep "reason" under 15 words, in plain simple English, written to the president.`;
+Pick the closest category from the hall list for hall transactions and from the personal list for personal ones (use "" for transfer or unsure, or if nothing fits). Fill "event" only when the transaction clearly belongs to one of the listed events by name or date; otherwise "". Keep "reason" under 15 words, in plain simple English, written to the president.`;
 function aiSchema(){
   return { type:'object', additionalProperties:false, required:['results'], properties:{ results:{ type:'array', items:{
     type:'object', additionalProperties:false, required:['id','owner','category','event','confidence','reason'], properties:{
       id:{type:'string'}, owner:{type:'string', enum:['hall','personal','transfer','unsure']},
-      category:{type:'string', enum:['', ...state.categories]}, event:{type:'string'},
+      category:{type:'string', enum:['', ...new Set([...state.categories, ...state.personalCategories])]}, event:{type:'string'},
       confidence:{type:'string', enum:['high','medium','low']}, reason:{type:'string'} } } } } };
 }
 function aiContextText(){
@@ -1315,11 +1432,12 @@ function aiContextText(){
   const seen = new Set(), ex = [];
   for(const t of state.txns.filter(t=>t.manual && t.owner!=='unsure').sort((a,b)=>b.date.localeCompare(a.date))){
     const k = suggestKeyword(t.desc) || t.desc; if(seen.has(k)) continue; seen.add(k);
-    ex.push(`- ${t.dir==='out'?'paid out':'received'} ${t.amount.toFixed(2)} via ${t.sourceType==='card'?'credit card':t.sourceType} "${redact(t.desc)}" → ${t.owner}${t.owner==='hall'&&t.category?', '+t.category:''}${t.event?', event: '+t.event:''}`);
+    ex.push(`- ${t.dir==='out'?'paid out':'received'} ${t.amount.toFixed(2)} via ${t.sourceType==='card'?'credit card':t.sourceType} "${redact(t.desc)}" → ${t.owner}${t.category?', '+t.category:''}${t.event?', event: '+t.event:''}`);
     if(ex.length>=40) break;
   }
   return `About the hall (written by the president):\n${state.settings.aiContext || '(nothing written)'}\n\n`+
     `Hall categories: ${state.categories.join(', ')}\n`+
+    `Personal categories: ${state.personalCategories.join(', ')}\n`+
     `Known events: ${evs.length?evs.join(', '):'(none yet)'}\n\n`+
     `How the president has sorted transactions so far (follow this pattern):\n${ex.length?ex.join('\n'):'(none yet)'}`;
 }
@@ -1389,7 +1507,7 @@ async function runAI(list){
     try{
       for(const x of await askClaude(client, batch)){
         const t = x.txn; if(t.manual) continue;
-        t.ai = { owner:x.owner, category: x.owner==='hall' ? catOk(x.category) : '', event: String(x.event||'').slice(0,60), conf:x.confidence, reason:String(x.reason||'').slice(0,160) };
+        t.ai = { owner:x.owner, category: catOk(x.category, x.owner), event: String(x.event||'').slice(0,60), conf:x.confidence, reason:String(x.reason||'').slice(0,160) };
       }
     }catch(err){
       if(err instanceof Anthropic.AuthenticationError) fatal = 'Your API key was not accepted. Check it in Rules & backup → AI sorting.';
