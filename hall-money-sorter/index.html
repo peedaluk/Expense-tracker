@@ -107,6 +107,18 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
 #toast button{background:var(--bg);color:var(--text);border:0;padding:5px 10px}
 #toast.show{display:flex}
 .empty{padding:30px;text-align:center;color:var(--muted)}
+.tag.ai{background:var(--soft);color:var(--accent)}
+.sugg{background:var(--soft);border:1px solid var(--accent);border-radius:10px;padding:10px 12px;margin:10px 0;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.sugg .t{flex:1;min-width:200px}
+.sugg-line{font-size:12px;color:var(--accent);margin-top:3px}
+.sugg-line button{font-size:12px;padding:1px 8px;margin-left:4px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:9px;overflow:hidden}
+.seg button{border:0;border-radius:0;padding:7px 12px}
+.seg button.on{background:var(--accent);color:var(--accent-ink)}
+.ai-bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;max-width:760px;margin:0 auto 12px}
+.progress{height:10px;background:var(--soft);border-radius:5px;overflow:hidden;margin:10px 0}
+.progress i{display:block;height:100%;background:var(--accent);transition:width .3s}
+pre.sent{background:var(--soft);padding:8px;border-radius:8px;font-size:12px;white-space:pre-wrap;word-break:break-word;max-height:180px;overflow:auto}
 @media (max-width:640px){ .saved{width:100%;margin-left:0} .r-amt{font-size:24px} }
 @media print{
   header,.no-print,#toast{display:none!important}
@@ -139,7 +151,8 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
     <h2>Start here</h2>
     <ol class="steps">
       <li><b>Import</b> your bank statement and credit card statement (CSV or Excel). Add as many files as you like.</li>
-      <li><b>Sort</b> each transaction as <span class="pill hall">Hall</span>, <span class="pill personal">Personal</span> or <span class="pill transfer">Transfer</span> (for example paying your card bill). Tick "remember" and similar transactions are sorted automatically.</li>
+      <li>Transactions are <b>sorted automatically</b> as <span class="pill hall">Hall</span>, <span class="pill personal">Personal</span> or <span class="pill transfer">Transfer</span> (for example paying your card bill). It recognises common shops and payment types, and learns from every choice you make.</li>
+      <li>For the ones it can't tell, check its <b>suggestions</b>, or let <b>🤖 AI</b> sort them (optional, see "Rules &amp; backup"). Then quickly <b>check</b> what was auto-sorted.</li>
       <li>For a payment that was <b>partly</b> for the hall (a cash withdrawal, a mixed Amazon order), use <b>Split</b>.</li>
       <li>Add <b>cash</b> spending or cash income that isn't on any statement with "+ Add cash / other entry".</li>
       <li>Open <b>Where the money stands</b> to see how much hall money you're holding, or how much the hall owes you.</li>
@@ -177,11 +190,13 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
         <option value="hall">🏠 Hall</option>
         <option value="personal">👤 Personal</option>
         <option value="transfer">🔁 Transfer</option>
+        <option value="auto">🤖 Auto-sorted, not checked yet</option>
       </select>
       <select id="fDir"><option value="">In &amp; out</option><option value="out">Money out</option><option value="in">Money in</option></select>
       <select id="fSource"></select>
       <select id="fMonth"></select>
-      <button id="addManualBtn" class="primary">+ Add cash / other entry</button>
+      <button id="addManualBtn">+ Add cash / other entry</button>
+      <button class="primary aiBtn">🤖 Sort unsure ones with AI</button>
     </div>
     <div class="bulk">
       <span>Mark all <b id="shownCount">0</b> shown as</span>
@@ -239,6 +254,17 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
       <div id="ruleList"></div>
     </div>
     <div>
+      <div class="panel" id="aiPanel">
+        <h2>🤖 AI sorting (optional)</h2>
+        <p class="small">The built-in smart sorting works offline and already handles common shops and patterns. For the hard ones (payments to people, unfamiliar shop names), Claude AI can read the descriptions and decide, using the choices you've already made as examples.</p>
+        <p class="small"><b>What gets sent to Anthropic (the company behind Claude):</b> only the date, description, amount, money in or out, and bank or card, for the transactions being sorted. Long numbers like reference and card numbers are removed first. Your account number, balances and statement files are <b>never</b> sent. Descriptions can still contain names of people you paid.</p>
+        <p class="small"><b>Cost:</b> you need your own API key from console.anthropic.com, and you pay Anthropic per use. Sorting a few hundred transactions usually costs well under a dollar. Your exact usage shows in the Anthropic console.</p>
+        <div class="field"><label>Anthropic API key</label><input type="password" id="apiKey" placeholder="sk-ant-…" autocomplete="off"></div>
+        <label class="small"><input type="checkbox" id="apiRemember"> Remember the key on this computer (otherwise it's forgotten when you close the page)</label>
+        <div class="field" style="margin-top:10px"><label>About your hall (helps the AI). Events with dates, regular vendors, where hall money comes from, people who handle hall money:</label>
+          <textarea id="aiContext" rows="5" style="width:100%" placeholder="e.g. Freshers party 6 Sep, Diwali Night 15 Oct. Hall fund comes by NEFT from Student Affairs. Sharma Decorators and Annapurna Caterers are our vendors. Ravi and Priya sent hall fees. Payments to Rahul are reimbursements for hall shopping."></textarea></div>
+        <div class="toolbar" style="margin-top:8px"><button id="aiSave" class="primary">Save</button><button class="aiBtn">🤖 Sort unsure ones now</button></div>
+      </div>
       <div class="panel">
         <h2>Hall categories</h2>
         <p class="muted small">One per line.</p>
@@ -330,9 +356,16 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
   <div class="dlg-actions"><button id="nCancel">Cancel</button><button id="nOk" class="primary">Add</button></div>
 </dialog>
 
+<dialog id="aiDlg" style="width:min(680px,calc(100vw - 32px))">
+  <h2 style="margin-top:0">🤖 Sort with AI</h2>
+  <div id="aiBody"></div>
+  <div class="dlg-actions" id="aiActions"></div>
+</dialog>
+
 <div id="toast"></div>
 
 <script src="vendor/xlsx.full.min.js"></script>
+<script src="vendor/anthropic-sdk.min.js"></script>
 <script>
 "use strict";
 /* ============================================================
@@ -579,14 +612,119 @@ function txKey(t){ return `${norm(t.source)}|${t.date}|${t.dir}|${t.amount.toFix
    Rules
    ============================================================ */
 function matchRule(t){ const d=norm(t.desc); return state.rules.find(r => r.text && d.includes(norm(r.text))); }
-function applyRules(){
+/* ============================================================
+   Automatic sorting
+   Order: your rules → AI answer (if asked) → built-in smart guess.
+   Only confident answers are applied; the rest become suggestions.
+   Nothing you sorted yourself (t.manual) is ever changed.
+   ============================================================ */
+// Built-in knowledge of common Indian merchants & patterns. First match wins.
+const KB = [
+  {re:/credit ?card (bill )?pay|\bcc ?payment|card ?payment|payment received|thank you for (your )?payment|payment.{0,4}thank you|cred ?club|cred\.club|autopay.{0,20}card/, owner:'transfer', conf:'high', why:'Credit card bill payment (not new spending)'},
+  {re:/\bto self\b|\bself transfer|own account|\bsweep|fd booking|fixed deposit|\brd instal/, owner:'transfer', conf:'medium', why:'Looks like moving money between your own accounts'},
+  {re:/refund|reversal|reversed|cashback/, special:'refund'},
+  {re:/hall ?fund|hall ?budget|student ?affairs|\bdean\b|warden|hostel ?(office|fund|council)|gymkhana|student ?council|sponsor/, dir:'in', owner:'hall', cat:'Hall income', conf:'high', why:'Money from the hall/college or a sponsor'},
+  {re:/hall ?fee|mess ?fee|event ?fee|contribution|\bfees?\b|registration|\bhall\b/, dir:'in', owner:'hall', cat:'Hall income', conf:'medium', why:'Looks like fees or contributions for the hall'},
+  {re:/salary|stipend|pocket ?money|\bmom\b|\bdad\b|\bpapa\b|\bmummy\b|\bmaa\b|scholarship|interest|int\.?\s?pd/, dir:'in', owner:'personal', conf:'high', why:'Looks like your own or family money'},
+  {re:/netflix|spotify|prime ?video|hotstar|jiocinema|youtube|apple\.com|itunes|google ?play|airtel|\bjio\b|vodafone|\bvi ?prepaid|recharge|myntra|ajio|nykaa|meesho|blinkit|zepto|instamart|bigbasket|gym|salon|barber/, dir:'out', owner:'personal', conf:'high', why:'Usually personal (subscriptions, recharge, own shopping)'},
+  {re:/swiggy|zomato|eatsure|dunzo/, dir:'out', special:'food'},
+  {re:/uber|\bola\b|rapido|irctc|makemytrip|redbus|goibibo|indigo|bookmyshow|\bpvr\b|inox|starbucks|domino|pizza|kfc|mcdonald|burger|cafe coffee/, dir:'out', owner:'personal', conf:'medium', why:'Usually personal, but could be for a hall event'},
+  {re:/caterers?\b|catering/, dir:'out', owner:'hall', cat:'Food & Snacks', conf:'high', why:'Caterer'},
+  {re:/tiffin|mithai|sweets|bakery|snacks|juice|tea stall|canteen|\bmess\b/, dir:'out', owner:'hall', cat:'Food & Snacks', conf:'medium', why:'Food vendor (sweets, snacks, canteen)'},
+  {re:/decor|balloon|florist|flowers?\b|party ?supplies|tent ?house|\btent\b|shamiana|lighting|rangoli/, dir:'out', owner:'hall', cat:'Decorations', conf:'high', why:'Decorations / event supplies vendor'},
+  {re:/\bdj\b|sound|speaker|audio|\bmic\b|projector|led wall/, dir:'out', owner:'hall', cat:'Electronics & Sound', conf:'high', why:'Sound / DJ / equipment rental'},
+  {re:/print|xerox|photocopy|\bflex\b|banner|poster|stationer|lamination/, dir:'out', owner:'hall', cat:'Printing & Stationery', conf:'high', why:'Printing / posters / stationery'},
+  {re:/troph|medal|momento|memento|prize|gift ?shop/, dir:'out', owner:'hall', cat:'Gifts & Prizes', conf:'high', why:'Trophies / prizes'},
+  {re:/sports|decathlon|cricket|football|badminton|volleyball|table tennis|carrom|chess/, dir:'out', owner:'hall', cat:'Sports', conf:'medium', why:'Sports shop (hall sports, unless it was for you)'},
+  {re:/plumb|electrician|electrical|carpenter|hardware|paint|repair|welding/, dir:'out', owner:'hall', cat:'Maintenance & Repairs', conf:'medium', why:'Repairs / maintenance'},
+  {re:/cleaning|housekeeping|phenyl|broom|detergent|dustbin/, dir:'out', owner:'hall', cat:'Cleaning & Supplies', conf:'medium', why:'Cleaning supplies'},
+  {re:/rental|rentals|chairs?\b|furniture|\bvenue\b/, dir:'out', owner:'hall', cat:'Events & Fests', conf:'medium', why:'Rentals for an event'},
+  {re:/fest\b|freshers|farewell|diwali|holi\b|navratri|garba|christmas|new year|party|celebration|\bevent\b|cultural|\bnight\b/, dir:'out', owner:'hall', cat:'Events & Fests', conf:'medium', why:'Mentions an event or celebration'},
+  {re:/tempo|transport|courier|porter/, dir:'out', owner:'hall', cat:'Transport', conf:'medium', why:'Transport / delivery, often for events'},
+  {re:/amazon|flipkart|big ?bazaar|dmart|reliance (fresh|smart|digital)|supermarket|mart\b/, owner:'unsure', why:'Shopping that could be for you or the hall. Check your order history.'},
+  {re:/\batm\b|\bnwd\b|cash ?w|withdraw|\bcwdr?\b/, owner:'unsure', why:'Cash withdrawal. Use Split if part of it went to the hall.'},
+];
+function catOk(c){ return c && state.categories.includes(c) ? c : ''; }
+function kbGuess(t, d, ignoreDir){
+  for(const k of KB){
+    if(!k.re.test(d) || (!ignoreDir && k.dir && k.dir!==t.dir)) continue;
+    if(k.special==='refund'){
+      if(t.dir!=='in') continue;
+      const inner = kbGuess(t, d.replace(k.re,' '), true);
+      if(inner && inner.owner!=='unsure') return {...inner, conf:'medium', why:'Refund from: '+inner.why.toLowerCase()};
+      return {owner:'unsure', why:'A refund. Mark it the same way as the original purchase.'};
+    }
+    if(k.special==='food'){
+      if(t.amount>=1500) return {owner:'hall', cat:'Food & Snacks', conf:'medium', why:`Big food order (${money(t.amount)}), maybe for the hall`};
+      if(t.amount<700) return {owner:'personal', conf:'high', why:'Small food-delivery order, usually personal'};
+      return {owner:'personal', conf:'medium', why:'Food-delivery order, usually personal'};
+    }
+    return k;
+  }
+  return null;
+}
+function buildLearned(){
+  const m = new Map();
   for(const t of state.txns){
-    if(t.manual) continue;
+    if(!t.manual || t.owner==='unsure') continue;
+    const kw = suggestKeyword(t.desc); if(!kw) continue;
+    const e = m.get(kw) || {n:0, owners:{}, cats:{}, max:0, min:Infinity};
+    e.n++; e.owners[t.owner]=(e.owners[t.owner]||0)+1;
+    if(t.category) e.cats[t.category]=(e.cats[t.category]||0)+1;
+    e.max=Math.max(e.max,t.amount); e.min=Math.min(e.min,t.amount);
+    m.set(kw,e);
+  }
+  // same amount received from 3+ different senders → looks like a collection (hall fees)
+  const inAmts = new Map();
+  for(const t of state.txns) if(t.dir==='in' && t.sourceType!=='card'){ const k=t.amount.toFixed(2); const s=inAmts.get(k)||new Set(); s.add(suggestKeyword(t.desc)||t.id); inAmts.set(k,s); }
+  return {m, inAmts};
+}
+const topEntry = obj => Object.entries(obj).sort((a,b)=>b[1]-a[1])[0];
+function smartGuess(t, L){
+  const d = norm(t.desc), kw = suggestKeyword(t.desc);
+  const e = kw && L.m.get(kw);
+  if(e){
+    const [owner,n] = topEntry(e.owners), share = n/e.n;
+    const cat = owner==='hall' && Object.keys(e.cats).length ? topEntry(e.cats)[0] : '';
+    const odd = t.amount > 3*e.max || t.amount < e.min/3;
+    const why = `You sorted ${e.n} similar “${kw}” transaction${e.n>1?'s':''} as ${OWNERS[owner].slice(2).trim()}` + (odd?', but this amount is very different':'');
+    return {owner, category:catOk(cat), conf: share>=0.8 && !odd ? 'high' : 'medium', reason:why, src:'smart', learned:true};
+  }
+  const k = kbGuess(t, d);
+  if(k) return {owner:k.owner, category: k.owner==='hall' ? catOk(k.cat) : '', conf:k.conf||'low', reason:k.why, src:'smart'};
+  if(t.dir==='in'){
+    const senders = L.inAmts.get(t.amount.toFixed(2));
+    if(senders && senders.size>=3) return {owner:'hall', category:catOk('Hall income'), conf:'medium', reason:`${senders.size} different people sent exactly ${money(t.amount)}. Looks like a hall collection.`, src:'smart'};
+  }
+  return null;
+}
+function applyRules(){
+  const L = buildLearned();
+  for(const t of state.txns){
+    if(t.manual){ t.sugg=null; continue; }
+    const prevEventAuto = t.eventAuto;
+    t.by=null; t.byRule=null; t.reason=''; t.sugg=null; t.owner='unsure'; t.category='';
+    if(prevEventAuto){ t.event=''; t.eventAuto=false; }
     const r = matchRule(t);
-    if(r){ t.owner=r.owner; t.category = r.owner==='hall' ? (r.category||'') : ''; t.byRule=r.id; }
-    else if(t.byRule){ t.owner='unsure'; t.category=''; t.byRule=null; }
+    if(r){ t.owner=r.owner; t.category = r.owner==='hall' ? catOk(r.category) : ''; t.by='rule'; t.byRule=r.id; t.reason=`Your rule: contains “${r.text}”`; continue; }
+    // Priority: your own past choices (confident) → AI answer → built-in knowledge.
+    const sg = smartGuess(t, L), ai = t.ai ? {...t.ai, src:'ai'} : null;
+    let g = ai || sg;
+    if(sg && sg.learned && sg.conf==='high') g = sg;
+    else if(ai && ai.owner==='unsure' && sg && sg.owner!=='unsure') g = sg;
+    if(!g) continue;
+    if(g.owner!=='unsure' && g.conf==='high'){
+      t.owner=g.owner; t.category = g.owner==='hall' ? catOk(g.category) : ''; t.by=g.src; t.reason=g.reason;
+      if(g.event && !t.event){ t.event=g.event; t.eventAuto=true; }
+    } else t.sugg = g;
   }
 }
+function setManual(t, owner, category){
+  t.owner=owner; t.manual = owner!=='unsure'; t.by=null; t.byRule=null; t.reason=''; t.sugg=null; t.eventAuto=false;
+  t.category = owner==='hall' ? (category||'') : '';
+}
+const isAutoUnchecked = t => !t.manual && (t.by==='smart' || t.by==='ai');
+const srcLabel = s => s==='ai' ? '🤖 AI' : s==='rule' ? 'your rule' : '💡 smart guess';
 function addRule(text, owner, category){
   text = norm(text);
   if(!text) return;
@@ -761,7 +899,8 @@ $('#mOk').onclick = ()=>{
   applyRules();
   $('#mapDlg').close(); cur=null;
   commit();
-  toast(`Imported ${added} transactions from ${m.source}` + (dup?` (${dup} already imported, skipped)`:'') + '.');
+  const autoN = state.txns.filter(t=>t.fileId===fileId && t.owner!=='unsure').length;
+  toast(`Imported ${added} transactions from ${m.source}` + (dup?` (${dup} already imported, skipped)`:'') + `. ${autoN} sorted automatically.`);
   if(!importQueue.length && added) setTimeout(()=>toast(`${state.txns.filter(t=>t.owner==='unsure').length} transactions to sort.`, 'Start sorting →', ()=>showTab('review')), 5200);
   nextImport();
 };
@@ -769,45 +908,61 @@ $('#mOk').onclick = ()=>{
 /* ============================================================
    2. REVIEW one by one
    ============================================================ */
-let reviewPos = 0;
-function reviewQueue(){ return state.txns.filter(t=>t.owner==='unsure').sort(byDate); }
+let reviewPos = 0, reviewMode = 'unsure';
+function reviewQueue(){
+  return state.txns.filter(t => reviewMode==='check' ? isAutoUnchecked(t) : t.owner==='unsure').sort(byDate);
+}
 function renderReview(){
-  const q = reviewQueue();
   const box = $('#reviewBox');
-  if(!state.txns.length){ box.innerHTML = `<div class="panel empty">Import a statement first (step 1).</div>`; return; }
+  if(!state.txns.length){ box.innerHTML = `<div class="panel empty">Import a statement first (step 1).</div>`; delete box.dataset.tid; return; }
+  const nUnsure = state.txns.filter(t=>t.owner==='unsure').length, nCheck = state.txns.filter(isAutoUnchecked).length;
+  const bar = `<div class="ai-bar">
+    <div class="seg"><button data-mode="unsure" class="${reviewMode==='unsure'?'on':''}">❓ Unsure (${nUnsure})</button><button data-mode="check" class="${reviewMode==='check'?'on':''}">🤖 Auto-sorted, check (${nCheck})</button></div>
+    ${reviewMode==='unsure' && nUnsure ? '<button class="primary aiBtn">🤖 Let AI sort the unsure ones</button>' : ''}
+    ${reviewMode==='check' && nCheck ? '<button id="confirmAll">✓ They all look right, confirm all</button>' : ''}
+  </div>`;
+  const q = reviewQueue();
   if(!q.length){
-    box.innerHTML = `<div class="panel empty"><h2>🎉 Everything is sorted</h2><p>No unsure transactions left.</p>
-      <p><button class="primary" onclick="showTab('summary')">See where the money stands →</button></p></div>`;
+    delete box.dataset.tid;
+    box.innerHTML = bar + (reviewMode==='unsure'
+      ? `<div class="panel empty review-card"><h2>🎉 Nothing unsure left</h2>${nCheck?`<p>${nCheck} transactions were sorted automatically. Quickly check them with "Auto-sorted, check".</p>`:''}<p><button class="primary" onclick="showTab('summary')">See where the money stands →</button></p></div>`
+      : `<div class="panel empty review-card"><h2>✓ Nothing left to check</h2><p>Everything sorted automatically has been checked by you.</p></div>`);
     return;
   }
   if(reviewPos >= q.length) reviewPos = 0;
   const t = q[reviewPos];
+  const s = t.sugg || (reviewMode==='check' ? {owner:t.owner, category:t.category, event:t.event, reason:t.reason, src:t.by} : null);
+  const preCat = t.category || (s && s.category) || '';
+  const preEvent = t.event || (s && s.event) || '';
   const kw = suggestKeyword(t.desc);
   const near = state.txns.filter(o=>o.id!==t.id && Math.abs(new Date(o.date)-new Date(t.date))<=2*864e5).sort(byDate).slice(0,8);
-  const isCash = /\batm\b|cash|\bnwd\b|withdraw|\bcwdr?\b/i.test(t.desc);
-  const total = state.txns.length, done = total - q.length;
-  box.innerHTML = `<div class="panel review-card">
-    <div class="small muted">${done} of ${total} sorted · ${q.length} left · showing #${reviewPos+1} of the unsure ones</div>
+  const total = state.txns.length, done = state.txns.filter(x=>x.manual || x.by==='rule').length;
+  const sBox = s && s.owner && s.owner!=='unsure'
+    ? `<div class="sugg"><div class="t">${reviewMode==='check'?'Sorted automatically as':'Suggestion:'} <span class="pill ${s.owner}">${OWNERS[s.owner]}</span>${s.owner==='hall'&&s.category?` <b>${esc(s.category)}</b>`:''}${s.event?` · ${esc(s.event)}`:''}
+        <div class="small muted">${srcLabel(s.src)}: ${esc(s.reason||'')}</div></div>
+        <button class="primary" data-accept="1">✓ ${reviewMode==='check'?'Correct':'Accept'}<kbd>Enter</kbd></button></div>`
+    : s && s.reason ? `<div class="hint">${srcLabel(s.src)}: ${esc(s.reason)}</div>` : '';
+  box.innerHTML = bar + `<div class="panel review-card">
+    <div class="small muted">${done} of ${total} sorted for sure · ${q.length} in this list · #${reviewPos+1}</div>
     <div class="bar" style="margin:6px 0 14px"><i style="width:${(done/total*100).toFixed(1)}%"></i></div>
     <div class="muted">${weekday(t.date)}, ${niceDate(t.date)} · ${esc(t.source)} <span class="tag">${t.sourceType==='card'?'Credit card':t.sourceType==='cash'?'Cash/other':'Bank'}</span></div>
     <div class="r-amt ${t.dir}">${t.dir==='out'?'Paid ':'Received '}${money(t.amount)}</div>
     <div class="r-desc">${esc(t.desc)}</div>
-    ${isCash?`<div class="hint">💵 This looks like a <b>cash withdrawal</b>. If only part of it was spent on the hall, use <b>Split</b>. If you can't remember, leave it unsure for now.</div>`:''}
-    ${t.dir==='in'?`<div class="hint">💰 Money <b>received</b>. Mark it <b>Hall</b> if it was hall money (hall fund, contributions, sponsors, refunds on hall purchases). Mark it Personal if it was yours (salary, family, friends paying you back).</div>`:''}
+    ${sBox}
     <div class="grid2">
-      <div class="field"><label>Hall category (if hall)</label><select id="rvCat">${catOptions(t.category)}</select></div>
-      <div class="field"><label>Event (optional)</label><input id="rvEvent" list="eventList" value="${esc(t.event)}" placeholder="e.g. Diwali Night"></div>
+      <div class="field"><label>Hall category (if hall)</label><select id="rvCat">${catOptions(preCat)}</select></div>
+      <div class="field"><label>Event (optional)</label><input id="rvEvent" list="eventList" value="${esc(preEvent)}" placeholder="e.g. Diwali Night"></div>
       <div class="field" style="grid-column:1/-1"><label>Note (optional)</label><input id="rvNote" value="${esc(t.note)}" placeholder="e.g. 200 chairs rent, receipt with Rahul"></div>
     </div>
     <div style="margin-top:12px">
-      <label><input type="checkbox" id="rvRemember" ${kw?'checked':''}> Remember: anything containing</label>
+      <label><input type="checkbox" id="rvRemember" ${kw && reviewMode==='unsure'?'checked':''}> Remember: anything containing</label>
       <input id="rvKw" value="${esc(kw)}" style="width:200px"> <span class="small muted" id="rvKwCount"></span>
     </div>
     <div class="choice">
       <button class="c-hall" data-o="hall">🏠 Hall<kbd>H</kbd></button>
       <button class="c-personal" data-o="personal">👤 Personal<kbd>P</kbd></button>
       <button class="c-transfer" data-o="transfer">🔁 Transfer / card bill<kbd>T</kbd></button>
-      <button data-act="skip">Not sure, skip<kbd>S</kbd></button>
+      <button data-act="skip">${reviewMode==='check'?'Next':'Not sure, skip'}<kbd>S</kbd></button>
       <button data-act="split">✂️ Split</button>
     </div>
     ${near.length?`<div class="ctx"><div class="muted small" style="border:0">Around the same days (to help you remember):</div>
@@ -815,34 +970,47 @@ function renderReview(){
   </div>`;
   const upd = ()=>{ const n=countSimilarUnsure($('#rvKw').value, t.id); $('#rvKwCount').textContent = $('#rvKw').value.trim() ? `(${n} other unsure transaction${n===1?'':'s'} match)` : ''; };
   $('#rvKw').addEventListener('input', upd); upd();
-  box.querySelector('.choice').onclick = e=>{
-    const b = e.target.closest('button'); if(!b) return;
-    if(b.dataset.o) classifyCurrent(b.dataset.o);
-    else if(b.dataset.act==='skip'){ reviewPos++; renderReview(); }
-    else if(b.dataset.act==='split') openSplit(t.id);
-  };
   box.dataset.tid = t.id;
+  box.dataset.sugg = s && s.owner && s.owner!=='unsure' ? s.owner : '';
 }
+$('#reviewBox').addEventListener('click', e=>{
+  const b = e.target.closest('button'); if(!b) return;
+  if(b.dataset.mode){ reviewMode=b.dataset.mode; reviewPos=0; renderReview(); return; }
+  if(b.id==='confirmAll'){
+    const list = state.txns.filter(isAutoUnchecked);
+    if(!confirm(`Confirm all ${list.length} automatically sorted transactions as they are?`)) return;
+    for(const t of list) t.manual = true;
+    commit(); toast(`${list.length} confirmed.`); return;
+  }
+  const t = state.txns.find(x=>x.id===$('#reviewBox').dataset.tid);
+  if(!t) return;
+  if(b.dataset.accept) classifyCurrent($('#reviewBox').dataset.sugg);
+  else if(b.dataset.o) classifyCurrent(b.dataset.o);
+  else if(b.dataset.act==='skip'){ reviewPos++; renderReview(); }
+  else if(b.dataset.act==='split') openSplit(t.id);
+});
 function classifyCurrent(owner){
-  const t = state.txns.find(x=>x.id===$('#reviewBox').dataset.tid); if(!t) return;
-  t.owner = owner; t.manual = true; t.byRule = null;
-  t.category = owner==='hall' ? $('#rvCat').value : '';
+  const t = state.txns.find(x=>x.id===$('#reviewBox').dataset.tid); if(!t || !owner) return;
+  const prev = {owner:t.owner, manual:t.manual, category:t.category, event:t.event, note:t.note};
+  const before = state.txns.filter(x=>x.owner==='unsure').length;
+  setManual(t, owner, $('#rvCat').value);
   t.event = $('#rvEvent').value.trim(); t.note = $('#rvNote').value.trim();
   let msg = `Marked as ${OWNERS[owner]}.`;
-  if($('#rvRemember').checked && $('#rvKw').value.trim()){
-    const before = state.txns.filter(x=>x.owner==='unsure').length;
-    addRule($('#rvKw').value, owner, t.category); applyRules();
-    const n = before - state.txns.filter(x=>x.owner==='unsure').length;
-    if(n>0) msg += ` ${n} similar transaction${n===1?'':'s'} sorted automatically.`;
-  }
+  if($('#rvRemember').checked && $('#rvKw').value.trim()) addRule($('#rvKw').value, owner, t.category);
+  applyRules();
+  const n = before - (prev.owner==='unsure'?1:0) - state.txns.filter(x=>x.owner==='unsure').length;
+  if(n>0) msg += ` ${n} similar transaction${n===1?'':'s'} sorted automatically.`;
   save(); renderCurrent();
-  toast(msg, 'Undo', ()=>{ t.owner='unsure'; t.manual=false; t.category=''; applyRules(); commit(); });
+  toast(msg, 'Undo', ()=>{ Object.assign(t, prev); applyRules(); commit(); });
 }
 document.addEventListener('keydown', e=>{
   if(currentTab!=='review' || e.ctrlKey || e.metaKey || e.altKey) return;
-  if(/INPUT|SELECT|TEXTAREA/.test(document.activeElement?.tagName) || document.querySelector('dialog[open]')) return;
+  if(document.querySelector('dialog[open]')) return;
+  const inField = /INPUT|SELECT|TEXTAREA/.test(document.activeElement?.tagName);
   const k = e.key.toLowerCase();
-  if(!$('#reviewBox').dataset.tid || !reviewQueue().length) return;
+  if(!$('#reviewBox').dataset.tid) return;
+  if(k==='enter' && $('#reviewBox').dataset.sugg && !(inField && document.activeElement.id==='rvKw')){ e.preventDefault(); classifyCurrent($('#reviewBox').dataset.sugg); return; }
+  if(inField) return;
   if(k==='h') classifyCurrent('hall');
   else if(k==='p') classifyCurrent('personal');
   else if(k==='t') classifyCurrent('transfer');
@@ -855,7 +1023,7 @@ document.addEventListener('keydown', e=>{
 const LIMIT = 600;
 function filtered(){
   const s = norm($('#fSearch').value), o=$('#fOwner').value, d=$('#fDir').value, src=$('#fSource').value, mo=$('#fMonth').value;
-  return state.txns.filter(t => (!s || norm(t.desc+' '+t.note+' '+t.event).includes(s)) && (!o||t.owner===o) && (!d||t.dir===d)
+  return state.txns.filter(t => (!s || norm(t.desc+' '+t.note+' '+t.event).includes(s)) && (!o || (o==='auto' ? isAutoUnchecked(t) : t.owner===o)) && (!d||t.dir===d)
     && (!src||t.source===src) && (!mo||t.date.startsWith(mo))).sort(byDate);
 }
 function renderSort(){
@@ -870,7 +1038,9 @@ function renderSort(){
   if(!list.length){ $('#txBody').innerHTML = `<tr><td colspan="9" class="empty">${state.txns.length?'No transactions match these filters.':'Import a statement first.'}</td></tr>`; $('#tableNote').textContent=''; return; }
   $('#txBody').innerHTML = list.slice(0,LIMIT).map(t=>`<tr class="o-${t.owner}" data-id="${t.id}">
     <td style="white-space:nowrap">${niceDate(t.date)}</td>
-    <td class="desc">${esc(t.desc)}<br><span class="tag">${esc(t.source)}</span>${t.byRule?'<span class="tag rule" title="Sorted automatically by a rule">auto</span>':''}${t.splitFrom?'<span class="tag">split</span>':''}</td>
+    <td class="desc">${esc(t.desc)}<br><span class="tag">${esc(t.source)}</span>${t.by==='rule'?`<span class="tag rule" title="${esc(t.reason)}">rule</span>`:''}${isAutoUnchecked(t)?`<span class="tag ai" title="${esc(t.reason)}">${t.by==='ai'?'🤖 AI':'💡 auto'}: check</span>`:''}${t.splitFrom?'<span class="tag">split</span>':''}
+      ${t.sugg&&t.sugg.owner&&t.sugg.owner!=='unsure'?`<div class="sugg-line">${srcLabel(t.sugg.src)} suggests ${OWNERS[t.sugg.owner]}${t.sugg.category?' · '+esc(t.sugg.category):''}: ${esc(t.sugg.reason)} <button data-a="accept">Accept</button></div>`
+        : t.sugg&&t.sugg.reason?`<div class="sugg-line">${esc(t.sugg.reason)}</div>`:''}</td>
     <td class="num out">${t.dir==='out'?money(t.amount):''}</td>
     <td class="num in">${t.dir==='in'?money(t.amount):''}</td>
     <td><select data-f="owner">${ownerOptions(t.owner)}</select></td>
@@ -886,19 +1056,19 @@ $('#txBody').addEventListener('change', e=>{
   const f = e.target.dataset.f; if(!f) return;
   const t = state.txns.find(x=>x.id===e.target.closest('tr').dataset.id);
   if(f==='owner'){
-    t.owner = e.target.value; t.manual = t.owner!=='unsure'; t.byRule=null;
-    if(t.owner!=='hall') t.category='';
-    if(!t.manual) applyRules();
+    const v=e.target.value; setManual(t, v, v==='hall' ? (t.category || (t.sugg&&t.sugg.owner==='hall'?t.sugg.category:'') || '') : '');
+    applyRules();
     save(); renderCounts(); renderSort();
     const kw = suggestKeyword(t.desc), n = countSimilarUnsure(kw, t.id);
     if(t.manual && n) toast(`${n} other unsure transaction${n===1?'':'s'} contain “${kw}”.`, `Mark those ${OWNERS[t.owner]} too and remember`, ()=>{ addRule(kw, t.owner, t.category); applyRules(); commit(); });
-  } else if(f==='category'){ t.category=e.target.value; t.manual=true; t.byRule=null; save(); }
+  } else if(f==='category'){ const o=t.owner; setManual(t, o, e.target.value); save(); renderCounts(); renderSort(); }
   else { t[f] = e.target.value.trim(); save(); if(f==='event') renderCounts(); }
 });
 $('#txBody').addEventListener('click', e=>{
   const a = e.target.dataset.a; if(!a) return;
   const t = state.txns.find(x=>x.id===e.target.closest('tr').dataset.id);
   if(a==='split') openSplit(t.id);
+  if(a==='accept' && t.sugg){ const g=t.sugg; setManual(t, g.owner, g.category); if(g.event && !t.event) t.event=g.event; applyRules(); commit(); }
   if(a==='del' && confirm(`Delete this transaction?\n\n${niceDate(t.date)}  ${t.desc}  ${money(t.amount)}\n\nOnly do this for junk rows. To leave it out of the hall total, mark it Personal or Transfer instead.`)){
     state.txns = state.txns.filter(x=>x.id!==t.id); commit();
   }
@@ -907,7 +1077,7 @@ $('#bulkApply').onclick = ()=>{
   const list = filtered(), owner=$('#bulkOwner').value, cat=$('#bulkCat').value;
   if(!list.length) return;
   if(!confirm(`Mark all ${list.length} shown transactions as ${OWNERS[owner]}${owner==='hall'&&cat?' / '+cat:''}?`)) return;
-  for(const t of list){ t.owner=owner; t.manual = owner!=='unsure'; t.byRule=null; t.category = owner==='hall' ? (cat||t.category) : ''; }
+  for(const t of list) setManual(t, owner, owner==='hall' ? (cat||t.category||t.sugg?.category||'') : '');
   if($('#bulkRule').checked && $('#fSearch').value.trim() && owner!=='unsure') addRule($('#fSearch').value, owner, cat);
   applyRules(); commit();
 };
@@ -930,8 +1100,8 @@ $('#splitOk').onclick = ()=>{
   const t = state.txns.find(x=>x.id===splitId), a = r2(parseFloat($('#splitA').value));
   if(!(a>0 && a<t.amount)){ alert(`Part 1 must be more than 0 and less than ${money(t.amount)}.`); return; }
   const oa=$('#splitAOwner').value, ob=$('#splitBOwner').value;
-  const b = Object.assign({}, t, {id:uid(), amount:r2(t.amount-a), owner:ob, manual:ob!=='unsure', byRule:null, category:'', origKey:null, splitFrom:t.id, seq:(t.seq||0)+0.5});
-  Object.assign(t, {amount:a, owner:oa, manual:oa!=='unsure', byRule:null, category: oa==='hall'?t.category:'', splitFrom:t.splitFrom||t.id});
+  const b = Object.assign({}, t, {id:uid(), amount:r2(t.amount-a), owner:ob, manual:ob!=='unsure', by:null, byRule:null, sugg:null, ai:null, reason:'', category:'', origKey:null, splitFrom:t.id, seq:(t.seq||0)+0.5});
+  Object.assign(t, {amount:a, owner:oa, manual:oa!=='unsure', by:null, byRule:null, sugg:null, ai:null, reason:'', category: oa==='hall'?t.category:'', splitFrom:t.splitFrom||t.id});
   state.txns.push(b);
   $('#splitDlg').close(); commit();
   toast('Split done. Set the hall category in "All transactions" if needed.');
@@ -981,6 +1151,7 @@ function renderSummary(){
   const pers = T.filter(t=>t.owner==='personal');
   const transfers = T.filter(t=>t.owner==='transfer');
   const noCat = hallOut.filter(t=>!t.category).length;
+  const autoList = T.filter(isAutoUnchecked), nAuto = autoList.length, autoHallOut = sum(autoList.filter(t=>t.owner==='hall'&&t.dir==='out'));
   const dates = T.map(t=>t.date).sort();
 
   let verdict;
@@ -1000,6 +1171,7 @@ function renderSummary(){
     </div>
     <div class="verdict">${verdict}</div>
     ${uns.length?`<div class="hint">⚠️ <b>Not final yet:</b> ${uns.length} transactions are still unsure (${money(unsOut)} out, ${money(unsIn)} in). Depending on how they're sorted, the answer could be anywhere from <b>${money(low)}</b> to <b>${money(high)}</b> (a negative figure means the hall owes you). <a href="#" onclick="showTab('review');return false">Sort them →</a></div>`:''}
+    ${nAuto?`<div class="hint">🤖 ${nAuto} transactions were sorted automatically and you haven't checked them yet (${money(autoHallOut)} of the hall spending above). <a href="#" onclick="reviewMode='check';showTab('review');return false">Check them →</a></div>`:''}
     ${noCat?`<div class="hint">🏷️ ${noCat} hall expenses have no category yet. Filter "All transactions" by 🏠 Hall to add them.</div>`:''}
     <p class="small muted">Hall purchases on your credit card count as hall spending. Your credit card bill payments are marked as <b>transfers</b> so they aren't counted twice. ${transfers.length} transfers (${money(sum(transfers))}) are left out of the totals. Personal: ${pers.length} transactions (${money(sum(pers.filter(t=>t.dir==='out')))} spent).</p>
   </div>
@@ -1029,6 +1201,8 @@ function renderSettings(){
   $('#ruleCat').innerHTML = catOptions('', '— category —');
   $('#catText').value = state.categories.join('\n');
   $('#currency').value = state.settings.currency;
+  $('#apiKey').value = apiKey; let rem=false; try{ rem=!!localStorage.getItem(KEY_LS); }catch(e){} $('#apiRemember').checked = rem;
+  $('#aiContext').value = state.settings.aiContext || '';
   $('#ruleList').innerHTML = state.rules.length ? `<div class="table-wrap" style="max-height:52vh"><table><thead><tr><th>Contains</th><th>Becomes</th><th class="num">Matches</th><th></th></tr></thead><tbody>${
     state.rules.map(r=>`<tr><td>${esc(r.text)}</td><td><span class="pill ${r.owner}">${OWNERS[r.owner]}</span>${r.category?` <span class="tag">${esc(r.category)}</span>`:''}</td>
       <td class="num">${state.txns.filter(t=>t.byRule===r.id).length}</td><td><button class="danger" data-rule="${r.id}">Delete</button></td></tr>`).join('')}</tbody></table></div>`
@@ -1062,7 +1236,160 @@ $('#resetBtn').onclick = ()=>{
   state = fresh(); commit();
 };
 
+/* ============================================================
+   AI SORTING (optional, uses the person's own Anthropic API key)
+   ============================================================ */
+const KEY_LS = 'hallMoneySorter.apiKey';
+const AI_MODEL = 'claude-opus-5-5';
+const AI_BATCH = 50;
+let apiKey = '';
+try{ apiKey = localStorage.getItem(KEY_LS) || ''; }catch(e){}
+function saveAISettings(){
+  apiKey = $('#apiKey').value.trim();
+  try{ if($('#apiRemember').checked && apiKey) localStorage.setItem(KEY_LS, apiKey); else localStorage.removeItem(KEY_LS); }catch(e){}
+  state.settings.aiContext = $('#aiContext').value.trim();
+  save();
+}
+$('#aiSave').onclick = ()=>{ saveAISettings(); toast('AI settings saved.'); };
+document.addEventListener('click', e=>{
+  const b = e.target.closest('.aiBtn'); if(!b) return;
+  if(b.closest('#aiPanel')) saveAISettings();
+  openAI();
+});
+// Strip long numbers (reference numbers, masked card/account numbers) before anything is sent.
+function redact(s){ return String(s||'').replace(/[0-9Xx*]{5,}/g, m => /\d/.test(m) || /[Xx*]{4}/.test(m) ? '#' : m); }
+function aiLine(t, id){
+  return `${id} | ${t.date} | ${t.dir==='out'?'paid out':'received'} | ${t.amount.toFixed(2)} | ${t.sourceType==='card'?'credit card':t.sourceType==='cash'?'cash':'bank'} | ${redact(t.desc)}${t.note?' | note: '+redact(t.note):''}`;
+}
+const AI_SYSTEM = `You help a student hall president (the elected head of a university hall/hostel committee) separate hall money from their personal money. They used one personal bank account and one credit card for both, and are now sorting old statements.
+
+For each transaction choose:
+- "hall": spending for the hall or its events, or money received for the hall (hall fund, fees or contributions collected from residents, sponsorships, refunds of hall purchases).
+- "personal": the president's own spending or own income.
+- "transfer": moving money between their own accounts, especially paying the credit card bill from the bank account, and the matching "payment received" line on the card. These are not spending.
+- "unsure": the description does not give enough to decide.
+
+Use "high" confidence only when the description (or the president's notes and examples) makes it clear; the app applies high-confidence answers automatically and shows the rest to the president as suggestions. Payments to or from individual people are usually unclear unless the notes or examples explain them. Large purchases from vendors around event dates lean hall; small everyday purchases lean personal. Follow the president's own past choices when a transaction is similar.
+
+For hall transactions pick the closest category (use "" for anything else). Fill "event" only when the transaction clearly belongs to one of the listed events by name or date; otherwise "". Keep "reason" under 15 words, in plain simple English, written to the president.`;
+function aiSchema(){
+  return { type:'object', additionalProperties:false, required:['results'], properties:{ results:{ type:'array', items:{
+    type:'object', additionalProperties:false, required:['id','owner','category','event','confidence','reason'], properties:{
+      id:{type:'string'}, owner:{type:'string', enum:['hall','personal','transfer','unsure']},
+      category:{type:'string', enum:['', ...state.categories]}, event:{type:'string'},
+      confidence:{type:'string', enum:['high','medium','low']}, reason:{type:'string'} } } } } };
+}
+function aiContextText(){
+  const evs = [...new Set(state.txns.filter(t=>t.event).map(t=>t.event))];
+  const seen = new Set(), ex = [];
+  for(const t of state.txns.filter(t=>t.manual && t.owner!=='unsure').sort((a,b)=>b.date.localeCompare(a.date))){
+    const k = suggestKeyword(t.desc) || t.desc; if(seen.has(k)) continue; seen.add(k);
+    ex.push(`- ${t.dir==='out'?'paid out':'received'} ${t.amount.toFixed(2)} via ${t.sourceType==='card'?'credit card':t.sourceType} "${redact(t.desc)}" → ${t.owner}${t.owner==='hall'&&t.category?', '+t.category:''}${t.event?', event: '+t.event:''}`);
+    if(ex.length>=40) break;
+  }
+  return `About the hall (written by the president):\n${state.settings.aiContext || '(nothing written)'}\n\n`+
+    `Hall categories: ${state.categories.join(', ')}\n`+
+    `Known events: ${evs.length?evs.join(', '):'(none yet)'}\n\n`+
+    `How the president has sorted transactions so far (follow this pattern):\n${ex.length?ex.join('\n'):'(none yet)'}`;
+}
+async function askClaude(client, batch){
+  const ids = batch.map((_,i)=>'t'+(i+1));
+  const r = await client.beta.messages.create({
+    model: AI_MODEL,
+    max_tokens: 16000,
+    betas: ['server-side-fallback-2026-07-01'],
+    fallbacks: 'default',
+    output_config: { effort:'low', format:{ type:'json_schema', schema: aiSchema() } },
+    system: AI_SYSTEM,
+    messages: [{ role:'user', content: aiContextText() + '\n\nTransactions to sort (id | date | direction | amount | account | description):\n' + batch.map((t,i)=>aiLine(t, ids[i])).join('\n') }],
+  });
+  if(r.stop_reason==='refusal') throw new Error('The AI declined to answer for this group.');
+  if(r.stop_reason==='max_tokens') throw new Error('The AI answer was cut off for this group.');
+  const text = r.content.filter(b=>b.type==='text').map(b=>b.text).join('');
+  const data = JSON.parse(text);
+  return (data.results||[]).map(x=>({...x, txn: batch[ids.indexOf(x.id)]})).filter(x=>x.txn);
+}
+let aiRunning = false, aiCancel = false;
+function aiCandidates(includeAsked){ return state.txns.filter(t=>t.owner==='unsure' && !t.manual && (includeAsked || !t.ai)).sort(byDate); }
+function openAI(){
+  if(aiRunning){ $('#aiDlg').showModal(); return; }
+  const body = $('#aiBody'), actions = $('#aiActions');
+  if(!window.Anthropic){
+    body.innerHTML = `<p>The AI helper file didn't load. Make sure the <b>vendor</b> folder is next to index.html.</p>`;
+    actions.innerHTML = `<button onclick="$('#aiDlg').close()">Close</button>`; $('#aiDlg').showModal(); return;
+  }
+  if(!apiKey){
+    body.innerHTML = `<p>To use AI sorting, first add your Anthropic API key in <b>Rules &amp; backup → AI sorting</b>. The page also explains exactly what gets sent and what it costs.</p><p class="small muted">Don't want to use AI? The built-in smart sorting and suggestions work without it.</p>`;
+    actions.innerHTML = `<button onclick="$('#aiDlg').close()">Cancel</button><button class="primary" onclick="$('#aiDlg').close();showTab('settings');$('#apiKey').focus()">Add API key</button>`;
+    $('#aiDlg').showModal(); return;
+  }
+  const draw = ()=>{
+    const inc = $('#aiInc')?.checked || false;
+    const list = aiCandidates(inc), asked = state.txns.filter(t=>t.owner==='unsure' && !t.manual && t.ai).length;
+    body.innerHTML = list.length || asked ? `
+      <p><b>${list.length}</b> unsure transactions will be sent to Claude in ${Math.max(1,Math.ceil(list.length/AI_BATCH))} group(s). It also gets your hall notes and up to 40 examples of choices you've already made.</p>
+      ${asked?`<label class="small"><input type="checkbox" id="aiInc" ${inc?'checked':''}> Also re-check the ${asked} the AI has already looked at</label>`:''}
+      <p class="small muted" style="margin-top:10px">Exactly what's sent for each transaction (first few shown):</p>
+      <pre class="sent">${esc(list.slice(0,6).map((t,i)=>aiLine(t,'t'+(i+1))).join('\n') || '(none)')}</pre>
+      <p class="small muted">Confident answers are applied automatically (you can check them later in "Auto-sorted, check"). Less certain ones show up as suggestions. Nothing you've sorted yourself is changed. If the AI declines a request, Anthropic automatically retries it with a fallback model.</p>`
+      : `<p>There are no unsure transactions to send. 🎉</p>`;
+    actions.innerHTML = `<button id="aiClose">Cancel</button>${list.length?`<button class="primary" id="aiGo">Send ${list.length} to AI</button>`:''}`;
+    $('#aiClose').onclick = ()=>$('#aiDlg').close();
+    if($('#aiInc')) $('#aiInc').onchange = draw;
+    if($('#aiGo')) $('#aiGo').onclick = ()=>runAI(list);
+  };
+  draw(); $('#aiDlg').showModal();
+}
+async function runAI(list){
+  aiRunning = true; aiCancel = false;
+  const body = $('#aiBody'), actions = $('#aiActions');
+  const client = new Anthropic({ apiKey, dangerouslyAllowBrowser:true, maxRetries:3 });
+  let done = 0, problems = [], fatal = '';
+  const before = new Set(state.txns.filter(t=>t.owner!=='unsure').map(t=>t.id));
+  const show = ()=>{
+    body.innerHTML = `<p>Sorting… ${done} of ${list.length} done.</p><div class="progress"><i style="width:${(done/list.length*100).toFixed(1)}%"></i></div>
+      <p class="small muted">You can keep this open; each group takes a little while.</p>`;
+    actions.innerHTML = `<button id="aiStop">Stop</button>`;
+    $('#aiStop').onclick = ()=>{ aiCancel = true; $('#aiStop').disabled = true; $('#aiStop').textContent = 'Stopping after this group…'; };
+  };
+  show();
+  for(let i=0; i<list.length && !aiCancel; i+=AI_BATCH){
+    const batch = list.slice(i, i+AI_BATCH);
+    try{
+      for(const x of await askClaude(client, batch)){
+        const t = x.txn; if(t.manual) continue;
+        t.ai = { owner:x.owner, category: x.owner==='hall' ? catOk(x.category) : '', event: String(x.event||'').slice(0,60), conf:x.confidence, reason:String(x.reason||'').slice(0,160) };
+      }
+    }catch(err){
+      if(err instanceof Anthropic.AuthenticationError) fatal = 'Your API key was not accepted. Check it in Rules & backup → AI sorting.';
+      else if(err instanceof Anthropic.PermissionDeniedError) fatal = "This API key isn't allowed to use the model. Check your Anthropic console.";
+      else if(err instanceof Anthropic.RateLimitError) fatal = 'Anthropic says there have been too many requests. Wait a minute and try again.';
+      else if(err instanceof Anthropic.APIConnectionError) fatal = "Couldn't reach Anthropic. Check your internet connection and try again.";
+      else if(err instanceof Anthropic.APIError) fatal = `Anthropic returned an error (${err.status}): ${err.message}`;
+      else problems.push(`Group ${i/AI_BATCH+1}: ${err.message}`);
+    }
+    if(fatal) break;
+    done += batch.length;
+    applyRules(); save(); renderCounts();
+    if(!aiCancel) show();
+  }
+  aiRunning = false;
+  applyRules(); save(); renderCurrent();
+  const nowSorted = list.filter(t=>t.owner!=='unsure' && !before.has(t.id)).length;
+  const sugg = list.filter(t=>t.owner==='unsure' && t.sugg && t.sugg.src==='ai' && t.sugg.owner!=='unsure').length;
+  body.innerHTML = `${fatal?`<div class="hint">⚠️ ${esc(fatal)}</div>`:''}
+    <p>✅ Done with ${done} of ${list.length} transactions.</p>
+    <ul><li><b>${nowSorted}</b> sorted automatically (confident answers). Check them in "Auto-sorted, check".</li>
+    <li><b>${sugg}</b> have a suggestion for you to accept or change.</li>
+    <li>The rest are still unsure. The AI couldn't tell either, so these need your memory, chats or receipts.</li></ul>
+    ${problems.length?`<p class="small muted">Some groups had problems: ${esc(problems.join('; '))}</p>`:''}`;
+  actions.innerHTML = `<button id="aiDone">Close</button><button class="primary" id="aiCheck">Check them now</button>`;
+  $('#aiDone').onclick = ()=>$('#aiDlg').close();
+  $('#aiCheck').onclick = ()=>{ $('#aiDlg').close(); reviewMode = nowSorted ? 'check' : 'unsure'; reviewPos=0; showTab('review'); };
+}
+
 /* ---------- start ---------- */
+applyRules();
 showTab(currentTab);
 if(state.txns.length){ try{ localStorage.getItem(LS_KEY); $('#savedMsg').textContent='Saved on this computer'; }catch(e){} }
 </script>
