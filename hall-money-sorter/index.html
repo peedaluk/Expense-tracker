@@ -731,15 +731,45 @@ function addRule(text, owner, category){
   state.rules = state.rules.filter(r=>norm(r.text)!==text);
   state.rules.unshift({id:uid(), text, owner, category: owner==='hall' ? (category||'') : ''});
 }
-const STOP = new Set(('upi imps neft rtgs pos ach nach ecom txn ref payment paid pay to from by via the and of for pvt ltd private limited india bank '+
+const STOP = new Set(('upi imps neft rtgs pos ach nach ecom txn ref payment paid pay paym to from by via the and of for pvt ltd private limited india bank '+
   'ybl okaxis oksbi okicici okhdfcbank paytm paytmqr axl ibl apl yesbank yespay icici hdfc sbi axis kotak mb ib inb debit credit card purchase '+
-  'dr cr transfer trf upiintent collect mandate p2a p2m p2p null na other others to:').split(' '));
+  'dr cr transfer trf tfr wdl dep at upiintent collect mandate p2a p2m p2p null na other others to: sent using').split(' '));
+// Generic notes people leave on UPI payments that say nothing useful.
+const DULL_NOTES = /^(paym(ent)?|pay|paid|upi|na|null|nil|sent|sent using.*|payment from phonepe|payment to.*|transfer|money|ok|-+)$/i;
+// Reads bank-transfer descriptions like
+//   SBI:    WDL TFR UPI/DR/626232205379/BADRAYYA/SBIN/756 9093399/Paym 0097693162093 AT 00202 KHARAGPUR
+//   others: UPI/524611112222/SWIGGY/swiggy@ybl/Food order    ·    IMPS/P2A/524612345678/MOM/Pocket money
+// and returns who the money went to / came from, plus the payment note.
+function parseTransfer(desc){
+  const m = String(desc||'').match(/\b(UPI|IMPS|NEFT|RTGS)\b[\s\-\/]*(.*)$/i);
+  if(!m || !m[2].includes('/')) return null;
+  const segs = m[2].split('/').map(x => x.replace(/\s+\d{5,}.*$/,'').replace(/-+$/,'').trim());
+  let i = 0;
+  while(i<segs.length && (!segs[i] || /^(DR|CR|P2A|P2M|P2P|MOB|IFT)$/i.test(segs[i]) || !/[a-z]/i.test(segs[i]))) i++;
+  if(i>=segs.length) return null;
+  const name = segs[i].replace(/\s+/g,' ');
+  let note = '';
+  for(let j=segs.length-1; j>i+1; j--){
+    const x = segs[j];
+    if(/[a-z]{2}/i.test(x) && !/@/.test(x) && !/^[A-Z]{4}0?$/.test(x)){ note = DULL_NOTES.test(x) ? '' : x; break; }
+  }
+  return {name, note};
+}
+// Words that identify "who" a transaction is with, used for learning & rules.
+// Must be a piece of text that actually appears in the description.
+function goodWord(w){ return w.length>=2 && !/\d/.test(w) && !/x{3,}/.test(w) && !STOP.has(w); }
 function suggestKeyword(desc){
-  const segs = String(desc||'').split(/[\/|*:@#,_]+|\s-\s|\s{2,}/);
+  const tr = parseTransfer(desc);
+  const segs = tr && /[a-z]{3}/i.test(tr.name) ? [tr.name] : String(desc||'').split(/[\/|*:@#,_]+|\s-\s|\s{2,}/);
   for(const seg of segs){
-    const words = seg.toLowerCase().split(/[\s.\-]+/).filter(w => w.length>=2 && !/\d/.test(w) && !/x{3,}/.test(w) && !STOP.has(w));
-    const kw = words.slice(0,2).join(' ');
-    if(kw.replace(/\s/g,'').length>=3) return kw;
+    const words = seg.toLowerCase().split(/\s+/);
+    for(let i=0;i<words.length;i++){
+      if(!goodWord(words[i].replace(/[.\-]+$/,''))) continue;
+      const run = [words[i]];
+      if(i+1<words.length && goodWord(words[i+1].replace(/[.\-]+$/,''))) run.push(words[i+1]);
+      const kw = run.join(' ').replace(/[.\-]+$/,'');
+      if(kw.replace(/\s/g,'').length>=3) return kw;
+    }
   }
   return '';
 }
@@ -948,6 +978,7 @@ function renderReview(){
     <div class="muted">${weekday(t.date)}, ${niceDate(t.date)} · ${esc(t.source)} <span class="tag">${t.sourceType==='card'?'Credit card':t.sourceType==='cash'?'Cash/other':'Bank'}</span></div>
     <div class="r-amt ${t.dir}">${t.dir==='out'?'Paid ':'Received '}${money(t.amount)}</div>
     <div class="r-desc">${esc(t.desc)}</div>
+    ${(()=>{ const tr=parseTransfer(t.desc); return tr ? `<p style="margin-top:-6px"><b>${t.dir==='out'?'Paid to':'Received from'}: ${esc(tr.name)}</b>${tr.note?` · note: “${esc(tr.note)}”`:''}</p>` : ''; })()}
     ${sBox}
     <div class="grid2">
       <div class="field"><label>Hall category (if hall)</label><select id="rvCat">${catOptions(preCat)}</select></div>
@@ -966,7 +997,7 @@ function renderReview(){
       <button data-act="split">✂️ Split</button>
     </div>
     ${near.length?`<div class="ctx"><div class="muted small" style="border:0">Around the same days (to help you remember):</div>
-      ${near.map(o=>`<div><span>${niceDate(o.date)}</span><span class="d">${esc(o.desc)}</span><span class="${o.dir}">${o.dir==='out'?'−':'+'}${money(o.amount)}</span><span class="pill ${o.owner}">${o.owner}</span></div>`).join('')}</div>`:''}
+      ${near.map(o=>`<div><span>${niceDate(o.date)}</span><span class="d" title="${esc(o.desc)}">${esc((tr=>tr?(o.dir==='out'?'To ':'From ')+tr.name+(tr.note?' · '+tr.note:''):o.desc)(parseTransfer(o.desc)))}</span><span class="${o.dir}">${o.dir==='out'?'−':'+'}${money(o.amount)}</span><span class="pill ${o.owner}">${o.owner}</span></div>`).join('')}</div>`:''}
   </div>`;
   const upd = ()=>{ const n=countSimilarUnsure($('#rvKw').value, t.id); $('#rvKwCount').textContent = $('#rvKw').value.trim() ? `(${n} other unsure transaction${n===1?'':'s'} match)` : ''; };
   $('#rvKw').addEventListener('input', upd); upd();
