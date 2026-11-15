@@ -1,0 +1,6 @@
+# Never commit real bank data or backups
+*.xlsx
+*.xls
+*.pdf
+hall-money-backup-*.json
+statements/

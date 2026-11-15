@@ -1,0 +1,1070 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hall Money Sorter</title>
+<style>
+:root{
+  --bg:#f6f7f9; --panel:#ffffff; --text:#1c2230; --muted:#5d6678; --line:#dfe3ea;
+  --accent:#2f5fd0; --accent-ink:#ffffff; --soft:#eef2fb;
+  --hall:#1f7a4d; --hall-bg:#e5f5ec; --personal:#6b4bb8; --personal-bg:#efe9fb;
+  --transfer:#6a7280; --transfer-bg:#eceef2; --unsure:#a15c00; --unsure-bg:#fff2dc;
+  --out:#b3261e; --in:#1f7a4d; --warn-bg:#fff6e0; --warn-line:#f0c56b;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#14171d; --panel:#1c2028; --text:#e7eaf0; --muted:#9aa3b5; --line:#2e3440;
+    --accent:#7c9cff; --accent-ink:#0d1220; --soft:#232a3a;
+    --hall:#5fd39a; --hall-bg:#183427; --personal:#b9a2ff; --personal-bg:#2a2340;
+    --transfer:#a8b0bf; --transfer-bg:#2a2f39; --unsure:#ffbf5e; --unsure-bg:#3a2c14;
+    --out:#ff8a80; --in:#5fd39a; --warn-bg:#33290f; --warn-line:#7a5d1c;
+  }
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+header{background:var(--panel);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+.head-in{max-width:1240px;margin:0 auto;padding:10px 16px;display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+h1{font-size:18px;margin:0 12px 0 0}
+nav{display:flex;flex-wrap:wrap;gap:6px}
+nav button{border:1px solid var(--line);background:transparent;color:var(--text);padding:7px 12px;border-radius:8px;cursor:pointer;font:inherit}
+nav button.active{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.badge{display:inline-block;min-width:20px;padding:0 6px;border-radius:10px;background:var(--unsure-bg);color:var(--unsure);font-size:12px;font-weight:600;margin-left:4px}
+.saved{margin-left:auto;color:var(--muted);font-size:13px}
+main{max-width:1240px;margin:0 auto;padding:16px}
+section{display:none}
+section.active{display:block}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:16px}
+h2{font-size:17px;margin:0 0 10px}
+h3{font-size:15px;margin:0 0 8px}
+p{margin:6px 0}
+.muted{color:var(--muted)}
+.small{font-size:13px}
+button,.btn{font:inherit;border:1px solid var(--line);background:var(--panel);color:var(--text);padding:7px 12px;border-radius:8px;cursor:pointer}
+button.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+button.danger{color:var(--out)}
+button:disabled{opacity:.5;cursor:not-allowed}
+input,select,textarea{font:inherit;color:var(--text);background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:6px 8px}
+input[type=checkbox]{padding:0}
+.drop{border:2px dashed var(--line);border-radius:12px;padding:28px;text-align:center;cursor:pointer;background:var(--soft)}
+.drop.over{border-color:var(--accent)}
+.steps{margin:0;padding-left:20px}
+.steps li{margin:4px 0}
+.toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px}
+.toolbar input[type=search]{min-width:220px;flex:1}
+.bulk{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:8px 10px;background:var(--soft);border-radius:8px;margin-bottom:10px;font-size:14px}
+.table-wrap{overflow:auto;max-height:68vh;border:1px solid var(--line);border-radius:10px;background:var(--panel)}
+table{border-collapse:collapse;width:100%}
+th,td{padding:7px 8px;border-bottom:1px solid var(--line);text-align:left;vertical-align:middle}
+th{position:sticky;top:0;background:var(--panel);font-size:13px;color:var(--muted);z-index:1}
+td.num,th.num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+td.desc{min-width:260px;max-width:420px;word-break:break-word}
+.out{color:var(--out)} .in{color:var(--in)}
+tr.o-hall td:first-child{box-shadow:inset 4px 0 var(--hall)}
+tr.o-personal td:first-child{box-shadow:inset 4px 0 var(--personal)}
+tr.o-transfer td:first-child{box-shadow:inset 4px 0 var(--transfer)}
+tr.o-unsure td:first-child{box-shadow:inset 4px 0 var(--unsure)}
+tr.o-transfer td{color:var(--muted)}
+td select,td input{width:100%;min-width:110px}
+.tag{display:inline-block;font-size:11px;padding:1px 6px;border-radius:6px;background:var(--soft);color:var(--muted);margin-left:4px;white-space:nowrap}
+.tag.rule{background:var(--hall-bg);color:var(--hall)}
+.pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600}
+.pill.hall{background:var(--hall-bg);color:var(--hall)}
+.pill.personal{background:var(--personal-bg);color:var(--personal)}
+.pill.transfer{background:var(--transfer-bg);color:var(--transfer)}
+.pill.unsure{background:var(--unsure-bg);color:var(--unsure)}
+.review-card{max-width:760px;margin:0 auto}
+.r-amt{font-size:30px;font-weight:700;font-variant-numeric:tabular-nums}
+.r-desc{font-size:18px;margin:8px 0 12px;word-break:break-word}
+.choice{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin:14px 0}
+.choice button{padding:12px;font-weight:600}
+.choice .c-hall{background:var(--hall-bg);color:var(--hall);border-color:var(--hall)}
+.choice .c-personal{background:var(--personal-bg);color:var(--personal);border-color:var(--personal)}
+.choice .c-transfer{background:var(--transfer-bg);color:var(--transfer)}
+kbd{font:12px ui-monospace,monospace;border:1px solid var(--line);border-radius:4px;padding:0 4px;margin-left:4px;opacity:.8}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
+.field label{display:block;font-size:13px;color:var(--muted);margin-bottom:3px}
+.field input,.field select{width:100%}
+.hint{background:var(--warn-bg);border:1px solid var(--warn-line);border-radius:8px;padding:8px 10px;margin:10px 0;font-size:14px}
+.ctx{font-size:13px;margin-top:6px}
+.ctx div{display:flex;gap:8px;padding:3px 0;border-bottom:1px dashed var(--line)}
+.ctx .d{flex:1;word-break:break-word}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-bottom:14px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px}
+.card .k{font-size:13px;color:var(--muted)}
+.card .v{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums;margin-top:2px}
+.card.big{border-width:2px}
+.card.big.pos{border-color:var(--hall)} .card.big.neg{border-color:var(--out)}
+.verdict{font-size:16px;padding:12px 14px;border-radius:10px;margin:10px 0;background:var(--soft)}
+.bar{height:8px;background:var(--soft);border-radius:4px;overflow:hidden;min-width:80px}
+.bar i{display:block;height:100%;background:var(--accent)}
+.cols2{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px}
+dialog{border:1px solid var(--line);border-radius:12px;background:var(--panel);color:var(--text);padding:18px;width:min(960px,calc(100vw - 32px));max-height:calc(100vh - 32px)}
+dialog::backdrop{background:rgba(0,0,0,.45)}
+.dlg-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:14px;flex-wrap:wrap}
+.preview{max-height:260px;overflow:auto;border:1px solid var(--line);border-radius:8px;margin-top:8px}
+#toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);background:var(--text);color:var(--bg);padding:10px 14px;border-radius:10px;display:none;gap:10px;align-items:center;max-width:calc(100vw - 32px);z-index:50;box-shadow:0 6px 24px rgba(0,0,0,.25);flex-wrap:wrap}
+#toast button{background:var(--bg);color:var(--text);border:0;padding:5px 10px}
+#toast.show{display:flex}
+.empty{padding:30px;text-align:center;color:var(--muted)}
+@media (max-width:640px){ .saved{width:100%;margin-left:0} .r-amt{font-size:24px} }
+@media print{
+  header,.no-print,#toast{display:none!important}
+  body{background:#fff;color:#000}
+  section{display:none!important}
+  #tab-summary{display:block!important}
+  .panel,.card{border-color:#ccc;break-inside:avoid}
+}
+</style>
+</head>
+<body>
+<header>
+  <div class="head-in">
+    <h1>🏠 Hall Money Sorter</h1>
+    <nav id="nav">
+      <button data-tab="import">1. Import statements</button>
+      <button data-tab="review">2. Sort one by one <span class="badge" id="unsureBadge">0</span></button>
+      <button data-tab="sort">3. All transactions</button>
+      <button data-tab="summary">4. Where the money stands</button>
+      <button data-tab="settings">Rules &amp; backup</button>
+    </nav>
+    <span class="saved" id="savedMsg">Saved only on this computer</span>
+  </div>
+</header>
+
+<main>
+<!-- ================= IMPORT ================= -->
+<section id="tab-import">
+  <div class="panel">
+    <h2>Start here</h2>
+    <ol class="steps">
+      <li><b>Import</b> your bank statement and credit card statement (CSV or Excel). Add as many files as you like.</li>
+      <li><b>Sort</b> each transaction as <span class="pill hall">Hall</span>, <span class="pill personal">Personal</span> or <span class="pill transfer">Transfer</span> (for example paying your card bill). Tick "remember" and similar transactions are sorted automatically.</li>
+      <li>For a payment that was <b>partly</b> for the hall (a cash withdrawal, a mixed Amazon order), use <b>Split</b>.</li>
+      <li>Add <b>cash</b> spending or cash income that isn't on any statement with "+ Add cash / other entry".</li>
+      <li>Open <b>Where the money stands</b> to see how much hall money you're holding, or how much the hall owes you.</li>
+    </ol>
+    <p class="muted small">🔒 Everything stays in this browser on this computer. Nothing is uploaded anywhere. Download a backup now and then from "Rules &amp; backup".</p>
+  </div>
+
+  <div class="panel">
+    <label class="drop" id="drop">
+      <input type="file" id="fileInput" multiple accept=".csv,.txt,.xlsx,.xls,.xlsm,.ods" hidden>
+      <b>Click to choose statement files</b> or drag them here<br>
+      <span class="muted small">CSV or Excel (.xlsx / .xls). If your bank only gives you a PDF, look for a "Download as Excel/CSV" option in net banking.</span>
+    </label>
+  </div>
+
+  <div class="panel">
+    <h2>Imported files</h2>
+    <div id="fileList"></div>
+  </div>
+</section>
+
+<!-- ================= REVIEW ================= -->
+<section id="tab-review">
+  <div id="reviewBox"></div>
+</section>
+
+<!-- ================= SORT ================= -->
+<section id="tab-sort">
+  <div class="panel">
+    <div class="toolbar">
+      <input type="search" id="fSearch" placeholder="Search description, e.g. swiggy, decor, atm…">
+      <select id="fOwner">
+        <option value="">All types</option>
+        <option value="unsure">❓ Unsure</option>
+        <option value="hall">🏠 Hall</option>
+        <option value="personal">👤 Personal</option>
+        <option value="transfer">🔁 Transfer</option>
+      </select>
+      <select id="fDir"><option value="">In &amp; out</option><option value="out">Money out</option><option value="in">Money in</option></select>
+      <select id="fSource"></select>
+      <select id="fMonth"></select>
+      <button id="addManualBtn" class="primary">+ Add cash / other entry</button>
+    </div>
+    <div class="bulk">
+      <span>Mark all <b id="shownCount">0</b> shown as</span>
+      <select id="bulkOwner">
+        <option value="hall">🏠 Hall</option>
+        <option value="personal">👤 Personal</option>
+        <option value="transfer">🔁 Transfer</option>
+        <option value="unsure">❓ Unsure</option>
+      </select>
+      <select id="bulkCat"></select>
+      <label class="small"><input type="checkbox" id="bulkRule"> also remember the search text for future imports</label>
+      <button id="bulkApply">Apply</button>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th>Date</th><th>Description</th><th class="num">Money out</th><th class="num">Money in</th>
+          <th>Belongs to</th><th>Hall category</th><th>Event</th><th>Note</th><th></th>
+        </tr></thead>
+        <tbody id="txBody"></tbody>
+      </table>
+    </div>
+    <p class="muted small" id="tableNote"></p>
+  </div>
+</section>
+
+<!-- ================= SUMMARY ================= -->
+<section id="tab-summary">
+  <div class="panel no-print">
+    <div class="toolbar">
+      <label>Hall money already in your account <b>before</b> the first statement date:
+        <input type="number" id="opening" step="0.01" style="width:150px"></label>
+      <button id="printBtn">Print / save as PDF</button>
+      <button id="exportHallBtn">Download hall transactions (CSV)</button>
+      <button id="exportAllBtn">Download all transactions (CSV)</button>
+    </div>
+  </div>
+  <div id="summaryBox"></div>
+</section>
+
+<!-- ================= SETTINGS ================= -->
+<section id="tab-settings">
+  <div class="cols2">
+    <div class="panel">
+      <h2>Remembered rules</h2>
+      <p class="muted small">If a description <b>contains</b> the text, the transaction is sorted automatically. Rules never change transactions you sorted yourself. Rules higher in the list win.</p>
+      <div class="toolbar">
+        <input id="ruleText" placeholder="text, e.g. sharma decor" style="flex:1;min-width:150px">
+        <select id="ruleOwner">
+          <option value="hall">🏠 Hall</option><option value="personal">👤 Personal</option><option value="transfer">🔁 Transfer</option>
+        </select>
+        <select id="ruleCat"></select>
+        <button id="ruleAdd" class="primary">Add rule</button>
+      </div>
+      <div id="ruleList"></div>
+    </div>
+    <div>
+      <div class="panel">
+        <h2>Hall categories</h2>
+        <p class="muted small">One per line.</p>
+        <textarea id="catText" rows="9" style="width:100%"></textarea>
+        <div class="toolbar" style="margin-top:8px">
+          <label>Currency symbol <input id="currency" style="width:70px"></label>
+          <button id="catSave" class="primary">Save</button>
+        </div>
+      </div>
+      <div class="panel">
+        <h2>Backup</h2>
+        <p class="muted small">Your work is saved automatically in this browser. Clearing browser data or switching browsers loses it, so download a backup file regularly.</p>
+        <div class="toolbar">
+          <button id="backupBtn" class="primary">Download backup</button>
+          <label class="btn">Restore from backup<input type="file" id="restoreInput" accept=".json" hidden></label>
+          <button id="resetBtn" class="danger">Erase everything</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+</main>
+
+<datalist id="eventList"></datalist>
+
+<!-- ================= DIALOGS ================= -->
+<dialog id="mapDlg">
+  <h2 style="margin-top:0">Check how to read <span id="mapFile"></span></h2>
+  <p class="muted small">I've guessed which columns are which. Check the preview at the bottom: dates, descriptions and amounts should look right.</p>
+  <div class="grid2">
+    <div class="field"><label>Name for this account</label><input id="mSource"></div>
+    <div class="field"><label>Type</label>
+      <select id="mType"><option value="bank">Bank account</option><option value="card">Credit card</option></select></div>
+    <div class="field"><label>Row with column titles</label><select id="mHeader"></select></div>
+    <div class="field"><label>Date format</label>
+      <select id="mDayFirst"><option value="1">Day first (31/12/2026)</option><option value="0">Month first (12/31/2026)</option></select></div>
+    <div class="field"><label>Date column</label><select id="mDate" class="colsel"></select></div>
+    <div class="field"><label>Description column</label><select id="mDesc" class="colsel"></select></div>
+  </div>
+  <div style="margin:12px 0 6px">
+    <label><input type="radio" name="mMode" value="split"> Separate columns for money out (debit/withdrawal) and money in (credit/deposit)</label><br>
+    <label><input type="radio" name="mMode" value="single"> One amount column</label>
+  </div>
+  <div class="grid2" id="mSplitBox">
+    <div class="field"><label>Money out column (Debit / Withdrawal)</label><select id="mDebit" class="colsel"></select></div>
+    <div class="field"><label>Money in column (Credit / Deposit)</label><select id="mCredit" class="colsel"></select></div>
+  </div>
+  <div class="grid2" id="mSingleBox">
+    <div class="field"><label>Amount column</label><select id="mAmount" class="colsel"></select></div>
+    <div class="field"><label>Dr/Cr column (if any)</label><select id="mDrcr" class="colsel"></select></div>
+    <div class="field"><label>Without a Dr/Cr marker, a positive amount means</label>
+      <select id="mPositive"><option value="out">Money out (a purchase/charge)</option><option value="in">Money in</option></select></div>
+  </div>
+  <p id="mStats" class="small" style="margin-top:12px"></p>
+  <div class="preview"><table><thead><tr><th>Date</th><th>Description</th><th class="num">Out</th><th class="num">In</th></tr></thead><tbody id="mPreview"></tbody></table></div>
+  <div class="dlg-actions">
+    <button id="mCancel">Skip this file</button>
+    <button id="mOk" class="primary">Import</button>
+  </div>
+</dialog>
+
+<dialog id="splitDlg" style="width:min(520px,calc(100vw - 32px))">
+  <h2 style="margin-top:0">Split a transaction</h2>
+  <p id="splitInfo" class="small"></p>
+  <div class="grid2">
+    <div class="field"><label>Part 1 amount</label><input type="number" id="splitA" step="0.01"></div>
+    <div class="field"><label>Part 1 belongs to</label><select id="splitAOwner"></select></div>
+    <div class="field"><label>Part 2 amount (the rest)</label><input id="splitB" disabled></div>
+    <div class="field"><label>Part 2 belongs to</label><select id="splitBOwner"></select></div>
+  </div>
+  <p class="muted small">For example: you withdrew ₹5,000 cash, spent ₹3,000 on hall snacks and kept ₹2,000 → Part 1 = 3000 Hall, Part 2 = Personal.</p>
+  <div class="dlg-actions"><button id="splitCancel">Cancel</button><button id="splitOk" class="primary">Split</button></div>
+</dialog>
+
+<dialog id="manualDlg" style="width:min(620px,calc(100vw - 32px))">
+  <h2 style="margin-top:0">Add a cash or other entry</h2>
+  <p class="muted small">Use this for anything not on a statement: cash paid to a vendor, hall money someone handed you in cash, a UPI payment from another app, and so on.</p>
+  <div class="grid2">
+    <div class="field"><label>Date</label><input type="date" id="nDate"></div>
+    <div class="field"><label>Amount</label><input type="number" id="nAmt" step="0.01" min="0"></div>
+    <div class="field"><label>Direction</label><select id="nDir"><option value="out">Money out (spent)</option><option value="in">Money in (received)</option></select></div>
+    <div class="field"><label>Paid via / from</label><input id="nVia" value="Cash"></div>
+    <div class="field" style="grid-column:1/-1"><label>Description</label><input id="nDesc" placeholder="e.g. Balloons from local shop for Diwali night"></div>
+    <div class="field"><label>Belongs to</label><select id="nOwner"></select></div>
+    <div class="field"><label>Hall category</label><select id="nCat"></select></div>
+    <div class="field"><label>Event</label><input id="nEvent" list="eventList"></div>
+    <div class="field"><label>Note</label><input id="nNote"></div>
+  </div>
+  <div class="dlg-actions"><button id="nCancel">Cancel</button><button id="nOk" class="primary">Add</button></div>
+</dialog>
+
+<div id="toast"></div>
+
+<script src="vendor/xlsx.full.min.js"></script>
+<script>
+"use strict";
+/* ============================================================
+   State & storage
+   ============================================================ */
+const LS_KEY = 'hallMoneySorter.v1';
+const TAB_KEY = 'hallMoneySorter.tab';
+const DEFAULT_CATEGORIES = ['Food & Snacks','Decorations','Events & Fests','Sports','Printing & Stationery',
+  'Maintenance & Repairs','Cleaning & Supplies','Electronics & Sound','Transport','Gifts & Prizes','Hall income','Miscellaneous'];
+// Credit card bill payments are moving your own money, not new spending.
+const DEFAULT_RULES = ['credit card payment','cc payment','card payment','creditcard','payment received','payment - thank you','thank you for your payment','cred club','autopay'];
+const OWNERS = {unsure:'❓ Unsure', hall:'🏠 Hall', personal:'👤 Personal', transfer:'🔁 Transfer / card bill'};
+
+function uid(){ return Math.random().toString(36).slice(2,9) + Date.now().toString(36).slice(-4); }
+function fresh(){
+  return { version:1, txns:[], files:[], categories:[...DEFAULT_CATEGORIES],
+    rules: DEFAULT_RULES.map(text => ({id:uid(), text, owner:'transfer', category:''})),
+    settings:{ opening:0, currency:'₹' } };
+}
+function load(){
+  try{
+    const raw = localStorage.getItem(LS_KEY);
+    if(!raw) return null;
+    const s = JSON.parse(raw);
+    if(!s || !Array.isArray(s.txns)) return null;
+    return Object.assign(fresh(), s, {settings:Object.assign(fresh().settings, s.settings||{})});
+  }catch(e){ return null; }
+}
+let state = load() || fresh();
+let storageOk = true;
+function save(){
+  try{
+    localStorage.setItem(LS_KEY, JSON.stringify(state));
+    storageOk = true;
+    $('#savedMsg').textContent = 'Saved on this computer · ' + new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+  }catch(e){
+    storageOk = false;
+    $('#savedMsg').textContent = '⚠️ Could not auto-save. Download a backup!';
+  }
+}
+
+/* ============================================================
+   Helpers
+   ============================================================ */
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const norm = s => String(s||'').toLowerCase().replace(/\s+/g,' ').trim();
+const r2 = n => Math.round(n*100)/100;
+function money(n){
+  const v = r2(Math.abs(n)).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
+  return (n < 0 ? '−' : '') + state.settings.currency + v;
+}
+function sum(arr){ return r2(arr.reduce((a,t)=>a+t.amount,0)); }
+const byDate = (a,b) => a.date.localeCompare(b.date) || (a.seq||0)-(b.seq||0);
+function niceDate(iso){
+  const [y,m,d] = iso.split('-').map(Number);
+  const dt = new Date(y, m-1, d);
+  return dt.toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'});
+}
+function weekday(iso){ const [y,m,d]=iso.split('-').map(Number); return new Date(y,m-1,d).toLocaleDateString('en-IN',{weekday:'long'}); }
+function monthLabel(ym){ const [y,m]=ym.split('-').map(Number); return new Date(y,m-1,1).toLocaleDateString('en-IN',{month:'long',year:'numeric'}); }
+function colLetter(i){ let s=''; i++; while(i>0){ const m=(i-1)%26; s=String.fromCharCode(65+m)+s; i=Math.floor((i-1)/26);} return s; }
+function download(name, text, type){
+  const blob = new Blob([text], {type});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 2000);
+}
+function csvCell(v){ const s=String(v??''); return /[",\n\r]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s; }
+function toCSV(rows){ return '﻿' + rows.map(r=>r.map(csvCell).join(',')).join('\r\n'); }
+function ownerOptions(sel, includeUnsure=true){
+  return Object.entries(OWNERS).filter(([k])=>includeUnsure||k!=='unsure')
+    .map(([k,v])=>`<option value="${k}"${k===sel?' selected':''}>${v}</option>`).join('');
+}
+function catOptions(sel, blank='— category —'){
+  return `<option value="">${blank}</option>` + state.categories
+    .map(c=>`<option${c===sel?' selected':''}>${esc(c)}</option>`).join('');
+}
+let toastTimer;
+function toast(msg, actionLabel, action){
+  const el = $('#toast');
+  el.innerHTML = `<span>${esc(msg)}</span>` + (actionLabel?`<button id="toastAct">${esc(actionLabel)}</button>`:'') + `<button id="toastX" aria-label="Close">✕</button>`;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>el.classList.remove('show'), actionLabel ? 12000 : 5000);
+  $('#toastX').onclick = ()=>el.classList.remove('show');
+  if(actionLabel) $('#toastAct').onclick = ()=>{ el.classList.remove('show'); action(); };
+}
+
+/* ============================================================
+   Reading files
+   ============================================================ */
+function parseCSV(text){
+  text = text.replace(/^﻿/,'');
+  const sample = text.split(/\r?\n/).slice(0,30).join('\n');
+  const delim = [',',';','\t','|'].map(d=>[d, sample.split(d).length]).sort((a,b)=>b[1]-a[1])[0][0];
+  const rows=[]; let row=[], field='', q=false;
+  for(let i=0;i<text.length;i++){
+    const c=text[i];
+    if(q){
+      if(c==='"'){ if(text[i+1]==='"'){ field+='"'; i++; } else q=false; }
+      else field+=c;
+    } else if(c==='"' && field===''){ q=true; }
+    else if(c===delim){ row.push(field); field=''; }
+    else if(c==='\n' || c==='\r'){
+      if(c==='\r' && text[i+1]==='\n') i++;
+      row.push(field); rows.push(row); row=[]; field='';
+    } else field+=c;
+  }
+  if(field!=='' || row.length){ row.push(field); rows.push(row); }
+  return rows;
+}
+async function readFileRows(file){
+  const name = file.name.toLowerCase();
+  if(/\.pdf$/.test(name)) throw new Error(`${file.name}: PDF statements can't be read here. In net banking, download the statement as Excel or CSV instead.`);
+  if(/\.(xlsx|xls|xlsm|ods)$/.test(name)){
+    if(!window.XLSX) throw new Error('The Excel reader did not load (the "vendor" folder must sit next to this page). Or open the file in Excel and use "Save As → CSV".');
+    const wb = XLSX.read(await file.arrayBuffer(), {type:'array', cellDates:true});
+    let best=null;
+    for(const n of wb.SheetNames){
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets[n], {header:1, raw:true, defval:''});
+      if(!best || rows.length>best.length) best=rows;
+    }
+    return best || [];
+  }
+  return parseCSV(await file.text());
+}
+
+/* ---------- value parsing ---------- */
+const MONTHS = {jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,sept:9,oct:10,nov:11,dec:12};
+function isoOf(y,m,d){
+  if(y<100) y+=2000;
+  if(!(m>=1&&m<=12&&d>=1&&d<=31&&y>=1990&&y<=2100)) return null;
+  const dt = new Date(y,m-1,d);
+  if(dt.getMonth()!==m-1) return null;
+  return `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+}
+function parseDate(v, dayFirst){
+  if(v instanceof Date && !isNaN(v)){ const t=new Date(v.getTime()+12*3600e3); return isoOf(t.getFullYear(),t.getMonth()+1,t.getDate()); }
+  if(typeof v==='number'){
+    if(v>20000 && v<80000){ const t=new Date(Date.UTC(1899,11,30)+Math.round(v)*864e5); return isoOf(t.getUTCFullYear(),t.getUTCMonth()+1,t.getUTCDate()); }
+    return null;
+  }
+  const s = String(v??'').trim();
+  if(!s) return null;
+  let m;
+  if((m=s.match(/^(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})/))) return isoOf(+m[1],+m[2],+m[3]);
+  if((m=s.match(/^(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{2,4})\b/))){
+    let a=+m[1], b=+m[2], d, mo;
+    if(dayFirst){ d=a; mo=b; } else { mo=a; d=b; }
+    if(mo>12 && d<=12){ [d,mo]=[mo,d]; }
+    return isoOf(+m[3],mo,d);
+  }
+  if((m=s.match(/^(\d{1,2})(?:st|nd|rd|th)?[\s\-\/.,]*([A-Za-z]{3,9})[\s\-\/.,]*(\d{2,4})\b/))){
+    const mo = MONTHS[m[2].toLowerCase().slice(0, m[2].toLowerCase().startsWith('sept')?4:3)];
+    if(mo) return isoOf(+m[3],mo,+m[1]);
+  }
+  if((m=s.match(/^([A-Za-z]{3,9})[\s\-.]+(\d{1,2}),?[\s\-]+(\d{2,4})\b/))){
+    const mo = MONTHS[m[1].toLowerCase().slice(0,3)];
+    if(mo) return isoOf(+m[3],mo,+m[2]);
+  }
+  return null;
+}
+function parseAmount(v){
+  if(typeof v==='number') return isFinite(v) ? {value:v, crdr:''} : null;
+  let s = String(v??'').trim();
+  if(!s) return null;
+  let crdr='';
+  const m = s.match(/\b(cr|dr)\.?\s*$/i);
+  if(m){ crdr=m[1].toLowerCase(); s=s.slice(0,m.index); }
+  const neg = /^\(.*\)$/.test(s.trim()) || /^-|-$/.test(s.trim().replace(/[^\d.\-]/g,''));
+  const digits = s.replace(/[^\d.]/g,'');
+  if(!digits || !/\d/.test(digits)) return null;
+  const n = parseFloat(digits);
+  if(isNaN(n)) return null;
+  return {value: neg ? -n : n, crdr};
+}
+
+/* ---------- column guessing ---------- */
+function cellsLower(row){ return (row||[]).map(c=>String(c??'').toLowerCase().replace(/\s+/g,' ').trim()); }
+function headerScore(row){
+  const h = cellsLower(row); let s=0;
+  if(h.some(c=>/date/.test(c))) s++;
+  if(h.some(c=>/narration|description|particulars|details|remarks|merchant/.test(c))) s++;
+  if(h.some(c=>/debit|withdraw/.test(c))) s++;
+  if(h.some(c=>/credit|deposit/.test(c))) s++;
+  if(h.some(c=>/amount|amt/.test(c))) s++;
+  if(h.some(c=>/balance/.test(c))) s++;
+  return s;
+}
+function detectHeader(rows){
+  let best=0, bestS=0;
+  for(let i=0;i<Math.min(rows.length,60);i++){ const s=headerScore(rows[i]); if(s>bestS){bestS=s;best=i;} }
+  return bestS>=2 ? best : 0;
+}
+function guessColumns(row){
+  const h = cellsLower(row);
+  const find = (re, skip=[]) => h.findIndex((c,i)=>re.test(c) && !skip.includes(i));
+  const drcr = find(/^(dr\s*\/\s*cr|cr\s*\/\s*dr|debit\s*\/\s*credit|type|txn type|transaction type|dr|cr)$/);
+  let date = find(/(txn|tran|transaction|posting|trans)\.?\s*date/);
+  if(date<0) date = h.findIndex(c=>/date/.test(c) && !/value/.test(c));
+  if(date<0) date = find(/date/);
+  let desc = find(/narration|description|particulars|details|remarks|merchant/);
+  if(desc<0) desc = h.findIndex(c=>/transaction/.test(c) && !/date|id|no|type|amount|ref/.test(c));
+  const debit = h.findIndex((c,i)=>i!==drcr && /debit|withdraw|money out|paid out/.test(c));
+  const credit = h.findIndex((c,i)=>i!==drcr && i!==debit && /credit|deposit|money in|paid in/.test(c));
+  const amount = h.findIndex((c,i)=>i!==debit && i!==credit && /amount|amt/.test(c));
+  return {date, desc, debit, credit, amount, drcr};
+}
+
+/* ---------- turning rows into transactions ---------- */
+function buildTxns(rows, map){
+  const out=[]; let skipped=0;
+  for(let i=map.headerRow+1;i<rows.length;i++){
+    const r = rows[i]||[];
+    const date = map.date>=0 ? parseDate(r[map.date], map.dayFirst) : null;
+    if(!date){ skipped++; continue; }
+    let amount=null, dir=null;
+    if(map.mode==='split'){
+      const d = map.debit>=0 ? parseAmount(r[map.debit]) : null;
+      const c = map.credit>=0 ? parseAmount(r[map.credit]) : null;
+      if(d && Math.abs(d.value)>0){ amount=Math.abs(d.value); dir = d.value<0 ? 'in' : 'out'; }
+      else if(c && Math.abs(c.value)>0){ amount=Math.abs(c.value); dir = c.value<0 ? 'out' : 'in'; }
+    } else {
+      const a = map.amount>=0 ? parseAmount(r[map.amount]) : null;
+      if(a && a.value!==0){
+        amount = Math.abs(a.value);
+        const flag = map.drcr>=0 ? String(r[map.drcr]??'').toLowerCase() : a.crdr;
+        if(/\bcr\b|credit|deposit|^c$/.test(flag)) dir='in';
+        else if(/\bdr\b|debit|withdraw|^d$/.test(flag)) dir='out';
+        else { const inv = map.positive==='out' ? 'in' : 'out'; dir = a.value>0 ? map.positive : inv; }
+      }
+    }
+    if(!amount){ skipped++; continue; }
+    const desc = map.desc>=0 ? String(r[map.desc]??'').replace(/\s+/g,' ').trim() : '';
+    out.push({date, desc: desc || '(no description)', amount: r2(amount), dir});
+  }
+  return {txns:out, skipped};
+}
+function txKey(t){ return `${norm(t.source)}|${t.date}|${t.dir}|${t.amount.toFixed(2)}|${norm(t.desc)}`; }
+
+/* ============================================================
+   Rules
+   ============================================================ */
+function matchRule(t){ const d=norm(t.desc); return state.rules.find(r => r.text && d.includes(norm(r.text))); }
+function applyRules(){
+  for(const t of state.txns){
+    if(t.manual) continue;
+    const r = matchRule(t);
+    if(r){ t.owner=r.owner; t.category = r.owner==='hall' ? (r.category||'') : ''; t.byRule=r.id; }
+    else if(t.byRule){ t.owner='unsure'; t.category=''; t.byRule=null; }
+  }
+}
+function addRule(text, owner, category){
+  text = norm(text);
+  if(!text) return;
+  state.rules = state.rules.filter(r=>norm(r.text)!==text);
+  state.rules.unshift({id:uid(), text, owner, category: owner==='hall' ? (category||'') : ''});
+}
+const STOP = new Set(('upi imps neft rtgs pos ach nach ecom txn ref payment paid pay to from by via the and of for pvt ltd private limited india bank '+
+  'ybl okaxis oksbi okicici okhdfcbank paytm paytmqr axl ibl apl yesbank yespay icici hdfc sbi axis kotak mb ib inb debit credit card purchase '+
+  'dr cr transfer trf upiintent collect mandate p2a p2m p2p null na other others to:').split(' '));
+function suggestKeyword(desc){
+  const segs = String(desc||'').split(/[\/|*:@#,_]+|\s-\s|\s{2,}/);
+  for(const seg of segs){
+    const words = seg.toLowerCase().split(/[\s.\-]+/).filter(w => w.length>=2 && !/\d/.test(w) && !/x{3,}/.test(w) && !STOP.has(w));
+    const kw = words.slice(0,2).join(' ');
+    if(kw.replace(/\s/g,'').length>=3) return kw;
+  }
+  return '';
+}
+function countSimilarUnsure(kw, exceptId){
+  kw = norm(kw); if(!kw) return 0;
+  return state.txns.filter(o => o.id!==exceptId && !o.manual && o.owner==='unsure' && norm(o.desc).includes(kw)).length;
+}
+
+/* ============================================================
+   Tabs
+   ============================================================ */
+let currentTab = 'import';
+try{ currentTab = localStorage.getItem(TAB_KEY) || (state.txns.length ? 'review' : 'import'); }catch(e){}
+function showTab(tab){
+  currentTab = tab;
+  try{ localStorage.setItem(TAB_KEY, tab); }catch(e){}
+  document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('active', b.dataset.tab===tab));
+  document.querySelectorAll('main > section').forEach(s=>s.classList.toggle('active', s.id==='tab-'+tab));
+  renderCurrent();
+  window.scrollTo(0,0);
+}
+$('#nav').addEventListener('click', e=>{ const b=e.target.closest('button'); if(b) showTab(b.dataset.tab); });
+function renderCurrent(){
+  renderCounts();
+  ({import:renderImport, review:renderReview, sort:renderSort, summary:renderSummary, settings:renderSettings})[currentTab]();
+}
+function renderCounts(){
+  $('#unsureBadge').textContent = state.txns.filter(t=>t.owner==='unsure').length;
+  const evs = [...new Set(state.txns.map(t=>t.event).filter(Boolean))].sort();
+  $('#eventList').innerHTML = evs.map(e=>`<option value="${esc(e)}">`).join('');
+}
+function commit(){ save(); renderCurrent(); }
+
+/* ============================================================
+   1. IMPORT
+   ============================================================ */
+function renderImport(){
+  if(!state.files.length && !state.txns.some(t=>!t.fileId)){
+    $('#fileList').innerHTML = '<p class="muted">Nothing imported yet. Want to try first? Import the two files in the <b>sample</b> folder.</p>';
+    return;
+  }
+  const rows = state.files.map(f=>{
+    const tx = state.txns.filter(t=>t.fileId===f.id);
+    const dates = tx.map(t=>t.date).sort();
+    return `<tr><td>${esc(f.name)}</td><td>${esc(f.source)} <span class="tag">${f.sourceType==='card'?'Credit card':'Bank'}</span></td>
+      <td class="num">${tx.length}</td><td>${dates.length?niceDate(dates[0])+' → '+niceDate(dates[dates.length-1]):'–'}</td>
+      <td><button class="danger" data-rmfile="${f.id}">Remove</button></td></tr>`;
+  }).join('');
+  const manual = state.txns.filter(t=>!t.fileId).length;
+  $('#fileList').innerHTML = `<div class="table-wrap"><table><thead><tr><th>File</th><th>Account</th><th class="num">Transactions</th><th>Period</th><th></th></tr></thead>
+    <tbody>${rows}${manual?`<tr><td colspan="2">Cash / other entries added by hand</td><td class="num">${manual}</td><td></td><td></td></tr>`:''}</tbody></table></div>
+    <p class="small muted">Imported the same file twice by accident? Don't worry: transactions already imported are skipped automatically.</p>`;
+}
+$('#fileList').addEventListener('click', e=>{
+  const id = e.target.dataset.rmfile; if(!id) return;
+  const f = state.files.find(x=>x.id===id);
+  if(!confirm(`Remove "${f.name}" and its ${state.txns.filter(t=>t.fileId===id).length} transactions (including how you sorted them)?`)) return;
+  state.txns = state.txns.filter(t=>t.fileId!==id);
+  state.files = state.files.filter(x=>x.id!==id);
+  commit();
+});
+const drop = $('#drop');
+$('#fileInput').addEventListener('change', e=>{ handleFiles([...e.target.files]); e.target.value=''; });
+['dragenter','dragover'].forEach(ev=>drop.addEventListener(ev, e=>{ e.preventDefault(); drop.classList.add('over'); }));
+['dragleave','drop'].forEach(ev=>drop.addEventListener(ev, e=>{ e.preventDefault(); drop.classList.remove('over'); }));
+drop.addEventListener('drop', e=>handleFiles([...e.dataTransfer.files]));
+
+const importQueue = []; let cur = null;
+async function handleFiles(files){
+  for(const f of files){
+    try{
+      const rows = (await readFileRows(f)).filter(r => r && r.some(c => String(c??'').trim()!==''));
+      if(!rows.length) throw new Error(`${f.name} looks empty.`);
+      importQueue.push({file:f, rows});
+    }catch(err){ toast(err.message); }
+  }
+  nextImport();
+}
+function nextImport(){
+  if(cur || !importQueue.length) return;
+  cur = importQueue.shift();
+  const isCard = /card|\bcc\b|credit/i.test(cur.file.name);
+  cur.map = { headerRow: detectHeader(cur.rows), dayFirst:true, sourceType: isCard?'card':'bank',
+    positive: isCard?'out':'in', source: cur.file.name.replace(/\.[^.]+$/,'').replace(/[_\-]+/g,' ').slice(0,40) };
+  regues();
+  openMapDialog();
+}
+function regues(){
+  const g = guessColumns(cur.rows[cur.map.headerRow]);
+  Object.assign(cur.map, g, {mode: (g.debit>=0 || g.credit>=0) ? 'split' : 'single'});
+}
+function fillColSelects(){
+  const hdr = cur.rows[cur.map.headerRow] || [];
+  const width = Math.max(...cur.rows.slice(0,80).map(r=>r.length), hdr.length);
+  let opts = '<option value="-1">— none —</option>';
+  for(let i=0;i<width;i++){ const name=String(hdr[i]??'').trim(); opts += `<option value="${i}">${colLetter(i)}${name?': '+esc(name.slice(0,40)):''}</option>`; }
+  document.querySelectorAll('#mapDlg .colsel').forEach(s=>s.innerHTML=opts);
+  const m = cur.map;
+  $('#mDate').value=m.date; $('#mDesc').value=m.desc; $('#mDebit').value=m.debit; $('#mCredit').value=m.credit;
+  $('#mAmount').value=m.amount; $('#mDrcr').value=m.drcr;
+  document.querySelectorAll('input[name=mMode]').forEach(r=>r.checked = r.value===m.mode);
+}
+function openMapDialog(){
+  const m = cur.map;
+  $('#mapFile').textContent = cur.file.name;
+  $('#mSource').value = m.source; $('#mType').value = m.sourceType; $('#mDayFirst').value = m.dayFirst?'1':'0';
+  $('#mPositive').value = m.positive;
+  $('#mHeader').innerHTML = cur.rows.slice(0,60).map((r,i)=>`<option value="${i}">Row ${i+1}: ${esc(r.map(c=>String(c??'').trim()).filter(Boolean).join(' | ').slice(0,90))}</option>`).join('');
+  $('#mHeader').value = m.headerRow;
+  fillColSelects(); updatePreview();
+  $('#mapDlg').showModal();
+}
+function readMapForm(){
+  const m = cur.map;
+  m.source = $('#mSource').value.trim() || 'Account';
+  m.sourceType = $('#mType').value; m.dayFirst = $('#mDayFirst').value==='1'; m.positive = $('#mPositive').value;
+  ['date','desc','debit','credit','amount','drcr'].forEach(k=>{ m[k] = +$('#m'+k[0].toUpperCase()+k.slice(1)).value; });
+  m.mode = document.querySelector('input[name=mMode]:checked')?.value || 'single';
+}
+function updatePreview(){
+  const m = cur.map;
+  $('#mSplitBox').style.display = m.mode==='split' ? '' : 'none';
+  $('#mSingleBox').style.display = m.mode==='single' ? '' : 'none';
+  const {txns, skipped} = buildTxns(cur.rows, m);
+  const outs = txns.filter(t=>t.dir==='out'), ins = txns.filter(t=>t.dir==='in');
+  $('#mStats').innerHTML = txns.length
+    ? `Found <b>${txns.length}</b> transactions (${skipped} other rows ignored, such as titles, blank lines and balance lines). Total money out <b class="out">${money(sum(outs))}</b>, money in <b class="in">${money(sum(ins))}</b>. <span class="muted">Compare these with the totals on your statement.</span>`
+    : `<span class="out">No transactions found yet.</span> Check the "Row with column titles", date and amount columns.`;
+  $('#mOk').disabled = !txns.length;
+  $('#mPreview').innerHTML = txns.slice(0,10).map(t=>`<tr><td>${niceDate(t.date)}</td><td>${esc(t.desc)}</td>
+    <td class="num out">${t.dir==='out'?money(t.amount):''}</td><td class="num in">${t.dir==='in'?money(t.amount):''}</td></tr>`).join('');
+}
+$('#mapDlg').addEventListener('change', e=>{
+  if(!cur) return;
+  if(e.target.id==='mHeader'){ cur.map.headerRow = +e.target.value; regues(); fillColSelects(); }
+  else if(e.target.id==='mType'){ readMapForm(); cur.map.positive = cur.map.sourceType==='card' ? 'out' : 'in'; $('#mPositive').value = cur.map.positive; }
+  readMapForm(); updatePreview();
+});
+$('#mapDlg').addEventListener('cancel', e=>{ e.preventDefault(); $('#mCancel').click(); });
+$('#mCancel').onclick = ()=>{ $('#mapDlg').close(); cur=null; nextImport(); };
+$('#mOk').onclick = ()=>{
+  readMapForm();
+  const m = cur.map, {txns} = buildTxns(cur.rows, m);
+  const fileId = uid();
+  const existing = {};
+  for(const t of state.txns) if(t.origKey) existing[t.origKey] = (existing[t.origKey]||0)+1;
+  const seen = {}; let added=0, dup=0;
+  let seq = state.txns.reduce((a,t)=>Math.max(a,t.seq||0),0);
+  for(const raw of txns){
+    const t = Object.assign(raw, {id:uid(), fileId, source:m.source, sourceType:m.sourceType, owner:'unsure', category:'', event:'', note:'', manual:false, byRule:null, seq:++seq});
+    t.origKey = txKey(t);
+    seen[t.origKey] = (seen[t.origKey]||0)+1;
+    if(seen[t.origKey] <= (existing[t.origKey]||0)){ dup++; continue; }
+    state.txns.push(t); added++;
+  }
+  state.files.push({id:fileId, name:cur.file.name, source:m.source, sourceType:m.sourceType, importedAt:new Date().toISOString()});
+  applyRules();
+  $('#mapDlg').close(); cur=null;
+  commit();
+  toast(`Imported ${added} transactions from ${m.source}` + (dup?` (${dup} already imported, skipped)`:'') + '.');
+  if(!importQueue.length && added) setTimeout(()=>toast(`${state.txns.filter(t=>t.owner==='unsure').length} transactions to sort.`, 'Start sorting →', ()=>showTab('review')), 5200);
+  nextImport();
+};
+
+/* ============================================================
+   2. REVIEW one by one
+   ============================================================ */
+let reviewPos = 0;
+function reviewQueue(){ return state.txns.filter(t=>t.owner==='unsure').sort(byDate); }
+function renderReview(){
+  const q = reviewQueue();
+  const box = $('#reviewBox');
+  if(!state.txns.length){ box.innerHTML = `<div class="panel empty">Import a statement first (step 1).</div>`; return; }
+  if(!q.length){
+    box.innerHTML = `<div class="panel empty"><h2>🎉 Everything is sorted</h2><p>No unsure transactions left.</p>
+      <p><button class="primary" onclick="showTab('summary')">See where the money stands →</button></p></div>`;
+    return;
+  }
+  if(reviewPos >= q.length) reviewPos = 0;
+  const t = q[reviewPos];
+  const kw = suggestKeyword(t.desc);
+  const near = state.txns.filter(o=>o.id!==t.id && Math.abs(new Date(o.date)-new Date(t.date))<=2*864e5).sort(byDate).slice(0,8);
+  const isCash = /\batm\b|cash|\bnwd\b|withdraw|\bcwdr?\b/i.test(t.desc);
+  const total = state.txns.length, done = total - q.length;
+  box.innerHTML = `<div class="panel review-card">
+    <div class="small muted">${done} of ${total} sorted · ${q.length} left · showing #${reviewPos+1} of the unsure ones</div>
+    <div class="bar" style="margin:6px 0 14px"><i style="width:${(done/total*100).toFixed(1)}%"></i></div>
+    <div class="muted">${weekday(t.date)}, ${niceDate(t.date)} · ${esc(t.source)} <span class="tag">${t.sourceType==='card'?'Credit card':t.sourceType==='cash'?'Cash/other':'Bank'}</span></div>
+    <div class="r-amt ${t.dir}">${t.dir==='out'?'Paid ':'Received '}${money(t.amount)}</div>
+    <div class="r-desc">${esc(t.desc)}</div>
+    ${isCash?`<div class="hint">💵 This looks like a <b>cash withdrawal</b>. If only part of it was spent on the hall, use <b>Split</b>. If you can't remember, leave it unsure for now.</div>`:''}
+    ${t.dir==='in'?`<div class="hint">💰 Money <b>received</b>. Mark it <b>Hall</b> if it was hall money (hall fund, contributions, sponsors, refunds on hall purchases). Mark it Personal if it was yours (salary, family, friends paying you back).</div>`:''}
+    <div class="grid2">
+      <div class="field"><label>Hall category (if hall)</label><select id="rvCat">${catOptions(t.category)}</select></div>
+      <div class="field"><label>Event (optional)</label><input id="rvEvent" list="eventList" value="${esc(t.event)}" placeholder="e.g. Diwali Night"></div>
+      <div class="field" style="grid-column:1/-1"><label>Note (optional)</label><input id="rvNote" value="${esc(t.note)}" placeholder="e.g. 200 chairs rent, receipt with Rahul"></div>
+    </div>
+    <div style="margin-top:12px">
+      <label><input type="checkbox" id="rvRemember" ${kw?'checked':''}> Remember: anything containing</label>
+      <input id="rvKw" value="${esc(kw)}" style="width:200px"> <span class="small muted" id="rvKwCount"></span>
+    </div>
+    <div class="choice">
+      <button class="c-hall" data-o="hall">🏠 Hall<kbd>H</kbd></button>
+      <button class="c-personal" data-o="personal">👤 Personal<kbd>P</kbd></button>
+      <button class="c-transfer" data-o="transfer">🔁 Transfer / card bill<kbd>T</kbd></button>
+      <button data-act="skip">Not sure, skip<kbd>S</kbd></button>
+      <button data-act="split">✂️ Split</button>
+    </div>
+    ${near.length?`<div class="ctx"><div class="muted small" style="border:0">Around the same days (to help you remember):</div>
+      ${near.map(o=>`<div><span>${niceDate(o.date)}</span><span class="d">${esc(o.desc)}</span><span class="${o.dir}">${o.dir==='out'?'−':'+'}${money(o.amount)}</span><span class="pill ${o.owner}">${o.owner}</span></div>`).join('')}</div>`:''}
+  </div>`;
+  const upd = ()=>{ const n=countSimilarUnsure($('#rvKw').value, t.id); $('#rvKwCount').textContent = $('#rvKw').value.trim() ? `(${n} other unsure transaction${n===1?'':'s'} match)` : ''; };
+  $('#rvKw').addEventListener('input', upd); upd();
+  box.querySelector('.choice').onclick = e=>{
+    const b = e.target.closest('button'); if(!b) return;
+    if(b.dataset.o) classifyCurrent(b.dataset.o);
+    else if(b.dataset.act==='skip'){ reviewPos++; renderReview(); }
+    else if(b.dataset.act==='split') openSplit(t.id);
+  };
+  box.dataset.tid = t.id;
+}
+function classifyCurrent(owner){
+  const t = state.txns.find(x=>x.id===$('#reviewBox').dataset.tid); if(!t) return;
+  t.owner = owner; t.manual = true; t.byRule = null;
+  t.category = owner==='hall' ? $('#rvCat').value : '';
+  t.event = $('#rvEvent').value.trim(); t.note = $('#rvNote').value.trim();
+  let msg = `Marked as ${OWNERS[owner]}.`;
+  if($('#rvRemember').checked && $('#rvKw').value.trim()){
+    const before = state.txns.filter(x=>x.owner==='unsure').length;
+    addRule($('#rvKw').value, owner, t.category); applyRules();
+    const n = before - state.txns.filter(x=>x.owner==='unsure').length;
+    if(n>0) msg += ` ${n} similar transaction${n===1?'':'s'} sorted automatically.`;
+  }
+  save(); renderCurrent();
+  toast(msg, 'Undo', ()=>{ t.owner='unsure'; t.manual=false; t.category=''; applyRules(); commit(); });
+}
+document.addEventListener('keydown', e=>{
+  if(currentTab!=='review' || e.ctrlKey || e.metaKey || e.altKey) return;
+  if(/INPUT|SELECT|TEXTAREA/.test(document.activeElement?.tagName) || document.querySelector('dialog[open]')) return;
+  const k = e.key.toLowerCase();
+  if(!$('#reviewBox').dataset.tid || !reviewQueue().length) return;
+  if(k==='h') classifyCurrent('hall');
+  else if(k==='p') classifyCurrent('personal');
+  else if(k==='t') classifyCurrent('transfer');
+  else if(k==='s'){ reviewPos++; renderReview(); }
+});
+
+/* ============================================================
+   3. ALL TRANSACTIONS
+   ============================================================ */
+const LIMIT = 600;
+function filtered(){
+  const s = norm($('#fSearch').value), o=$('#fOwner').value, d=$('#fDir').value, src=$('#fSource').value, mo=$('#fMonth').value;
+  return state.txns.filter(t => (!s || norm(t.desc+' '+t.note+' '+t.event).includes(s)) && (!o||t.owner===o) && (!d||t.dir===d)
+    && (!src||t.source===src) && (!mo||t.date.startsWith(mo))).sort(byDate);
+}
+function renderSort(){
+  const srcs = [...new Set(state.txns.map(t=>t.source))].sort();
+  const months = [...new Set(state.txns.map(t=>t.date.slice(0,7)))].sort();
+  const keepS=$('#fSource').value, keepM=$('#fMonth').value;
+  $('#fSource').innerHTML = '<option value="">All accounts</option>' + srcs.map(s=>`<option${s===keepS?' selected':''}>${esc(s)}</option>`).join('');
+  $('#fMonth').innerHTML = '<option value="">All months</option>' + months.map(m=>`<option value="${m}"${m===keepM?' selected':''}>${monthLabel(m)}</option>`).join('');
+  const keepB = $('#bulkCat').value; $('#bulkCat').innerHTML = catOptions(keepB, '— no category —');
+  const list = filtered();
+  $('#shownCount').textContent = list.length;
+  if(!list.length){ $('#txBody').innerHTML = `<tr><td colspan="9" class="empty">${state.txns.length?'No transactions match these filters.':'Import a statement first.'}</td></tr>`; $('#tableNote').textContent=''; return; }
+  $('#txBody').innerHTML = list.slice(0,LIMIT).map(t=>`<tr class="o-${t.owner}" data-id="${t.id}">
+    <td style="white-space:nowrap">${niceDate(t.date)}</td>
+    <td class="desc">${esc(t.desc)}<br><span class="tag">${esc(t.source)}</span>${t.byRule?'<span class="tag rule" title="Sorted automatically by a rule">auto</span>':''}${t.splitFrom?'<span class="tag">split</span>':''}</td>
+    <td class="num out">${t.dir==='out'?money(t.amount):''}</td>
+    <td class="num in">${t.dir==='in'?money(t.amount):''}</td>
+    <td><select data-f="owner">${ownerOptions(t.owner)}</select></td>
+    <td><select data-f="category" ${t.owner!=='hall'?'disabled':''}>${catOptions(t.category)}</select></td>
+    <td><input data-f="event" list="eventList" value="${esc(t.event)}"></td>
+    <td><input data-f="note" value="${esc(t.note)}"></td>
+    <td style="white-space:nowrap"><button data-a="split" title="Split into two parts">✂️</button> <button data-a="del" class="danger" title="Delete">✕</button></td>
+  </tr>`).join('');
+  $('#tableNote').textContent = list.length>LIMIT ? `Showing the first ${LIMIT} of ${list.length}. Use the filters to narrow down.` : '';
+}
+['fSearch','fOwner','fDir','fSource','fMonth'].forEach(id=>$('#'+id).addEventListener('input', renderSort));
+$('#txBody').addEventListener('change', e=>{
+  const f = e.target.dataset.f; if(!f) return;
+  const t = state.txns.find(x=>x.id===e.target.closest('tr').dataset.id);
+  if(f==='owner'){
+    t.owner = e.target.value; t.manual = t.owner!=='unsure'; t.byRule=null;
+    if(t.owner!=='hall') t.category='';
+    if(!t.manual) applyRules();
+    save(); renderCounts(); renderSort();
+    const kw = suggestKeyword(t.desc), n = countSimilarUnsure(kw, t.id);
+    if(t.manual && n) toast(`${n} other unsure transaction${n===1?'':'s'} contain “${kw}”.`, `Mark those ${OWNERS[t.owner]} too and remember`, ()=>{ addRule(kw, t.owner, t.category); applyRules(); commit(); });
+  } else if(f==='category'){ t.category=e.target.value; t.manual=true; t.byRule=null; save(); }
+  else { t[f] = e.target.value.trim(); save(); if(f==='event') renderCounts(); }
+});
+$('#txBody').addEventListener('click', e=>{
+  const a = e.target.dataset.a; if(!a) return;
+  const t = state.txns.find(x=>x.id===e.target.closest('tr').dataset.id);
+  if(a==='split') openSplit(t.id);
+  if(a==='del' && confirm(`Delete this transaction?\n\n${niceDate(t.date)}  ${t.desc}  ${money(t.amount)}\n\nOnly do this for junk rows. To leave it out of the hall total, mark it Personal or Transfer instead.`)){
+    state.txns = state.txns.filter(x=>x.id!==t.id); commit();
+  }
+});
+$('#bulkApply').onclick = ()=>{
+  const list = filtered(), owner=$('#bulkOwner').value, cat=$('#bulkCat').value;
+  if(!list.length) return;
+  if(!confirm(`Mark all ${list.length} shown transactions as ${OWNERS[owner]}${owner==='hall'&&cat?' / '+cat:''}?`)) return;
+  for(const t of list){ t.owner=owner; t.manual = owner!=='unsure'; t.byRule=null; t.category = owner==='hall' ? (cat||t.category) : ''; }
+  if($('#bulkRule').checked && $('#fSearch').value.trim() && owner!=='unsure') addRule($('#fSearch').value, owner, cat);
+  applyRules(); commit();
+};
+
+/* ---------- split ---------- */
+let splitId = null;
+function openSplit(id){
+  const t = state.txns.find(x=>x.id===id); splitId = id;
+  $('#splitInfo').innerHTML = `${niceDate(t.date)} · ${esc(t.desc)} · <b>${money(t.amount)}</b>`;
+  $('#splitA').value=''; $('#splitB').value='';
+  $('#splitAOwner').innerHTML = ownerOptions('hall'); $('#splitBOwner').innerHTML = ownerOptions('personal');
+  $('#splitDlg').showModal(); $('#splitA').focus();
+}
+$('#splitA').addEventListener('input', ()=>{
+  const t = state.txns.find(x=>x.id===splitId), a = parseFloat($('#splitA').value);
+  $('#splitB').value = a>0 && a<t.amount ? money(t.amount-a) : '';
+});
+$('#splitCancel').onclick = ()=>$('#splitDlg').close();
+$('#splitOk').onclick = ()=>{
+  const t = state.txns.find(x=>x.id===splitId), a = r2(parseFloat($('#splitA').value));
+  if(!(a>0 && a<t.amount)){ alert(`Part 1 must be more than 0 and less than ${money(t.amount)}.`); return; }
+  const oa=$('#splitAOwner').value, ob=$('#splitBOwner').value;
+  const b = Object.assign({}, t, {id:uid(), amount:r2(t.amount-a), owner:ob, manual:ob!=='unsure', byRule:null, category:'', origKey:null, splitFrom:t.id, seq:(t.seq||0)+0.5});
+  Object.assign(t, {amount:a, owner:oa, manual:oa!=='unsure', byRule:null, category: oa==='hall'?t.category:'', splitFrom:t.splitFrom||t.id});
+  state.txns.push(b);
+  $('#splitDlg').close(); commit();
+  toast('Split done. Set the hall category in "All transactions" if needed.');
+};
+
+/* ---------- manual entry ---------- */
+$('#addManualBtn').onclick = ()=>{
+  $('#nDate').value = new Date().toISOString().slice(0,10); $('#nAmt').value=''; $('#nDesc').value=''; $('#nEvent').value=''; $('#nNote').value='';
+  $('#nOwner').innerHTML = ownerOptions('hall', false); $('#nCat').innerHTML = catOptions('');
+  $('#manualDlg').showModal();
+};
+$('#nOwner').addEventListener('change', ()=>{ $('#nCat').disabled = $('#nOwner').value!=='hall'; });
+$('#nCancel').onclick = ()=>$('#manualDlg').close();
+$('#nOk').onclick = ()=>{
+  const amt = r2(parseFloat($('#nAmt').value)), date=$('#nDate').value, desc=$('#nDesc').value.trim();
+  if(!(amt>0) || !date || !desc){ alert('Please fill in the date, amount and description.'); return; }
+  const owner = $('#nOwner').value;
+  state.txns.push({id:uid(), fileId:null, date, desc, amount:amt, dir:$('#nDir').value, source:$('#nVia').value.trim()||'Cash', sourceType:'cash',
+    owner, category: owner==='hall'?$('#nCat').value:'', event:$('#nEvent').value.trim(), note:$('#nNote').value.trim(), manual:true, byRule:null, origKey:null,
+    seq: state.txns.reduce((a,t)=>Math.max(a,t.seq||0),0)+1});
+  $('#manualDlg').close(); commit(); toast('Entry added.');
+};
+
+/* ============================================================
+   4. SUMMARY
+   ============================================================ */
+function groupSum(list, keyFn){
+  const m = new Map();
+  for(const t of list){ const k=keyFn(t); m.set(k, r2((m.get(k)||0)+t.amount)); }
+  return [...m.entries()].sort((a,b)=>b[1]-a[1]);
+}
+function barTable(rows, total, label){
+  if(!rows.length) return '<p class="muted small">Nothing yet.</p>';
+  return `<table><thead><tr><th>${label}</th><th class="num">Amount</th><th style="width:35%"></th></tr></thead><tbody>${
+    rows.map(([k,v])=>`<tr><td>${esc(k)}</td><td class="num">${money(v)}</td><td><div class="bar"><i style="width:${total?(v/total*100).toFixed(1):0}%"></i></div></td></tr>`).join('')}</tbody></table>`;
+}
+function renderSummary(){
+  $('#opening').value = state.settings.opening || '';
+  const T = state.txns;
+  if(!T.length){ $('#summaryBox').innerHTML = '<div class="panel empty">Import and sort some transactions first.</div>'; return; }
+  const hall = T.filter(t=>t.owner==='hall');
+  const hallIn = hall.filter(t=>t.dir==='in'), hallOut = hall.filter(t=>t.dir==='out');
+  const outBank = sum(hallOut.filter(t=>t.sourceType==='bank')), outCard = sum(hallOut.filter(t=>t.sourceType==='card')), outCash = sum(hallOut.filter(t=>t.sourceType==='cash'));
+  const opening = +state.settings.opening || 0;
+  const A = sum(hallIn), B = sum(hallOut), C = r2(opening + A - B);
+  const uns = T.filter(t=>t.owner==='unsure'), unsOut = sum(uns.filter(t=>t.dir==='out')), unsIn = sum(uns.filter(t=>t.dir==='in'));
+  const pers = T.filter(t=>t.owner==='personal');
+  const transfers = T.filter(t=>t.owner==='transfer');
+  const noCat = hallOut.filter(t=>!t.category).length;
+  const dates = T.map(t=>t.date).sort();
+
+  let verdict;
+  if(C>0) verdict = `💼 You should be holding <b>${money(C)}</b> of <b>hall money</b> right now (in your account or as cash). The safest step is to move this amount into a separate hall account or to the treasurer.`;
+  else if(C<0) verdict = `🧾 You have spent <b>${money(-C)}</b> of <b>your own money</b> on the hall. The hall owes you this. Record it as a reimbursement to you.`;
+  else verdict = `✅ Hall money in and hall spending are exactly equal. You aren't holding any hall money and the hall doesn't owe you anything.`;
+  const low = r2(C - unsOut), high = r2(C + unsIn);
+
+  $('#summaryBox').innerHTML = `
+  <div class="panel">
+    <h2>Hall money check · ${niceDate(dates[0])} to ${niceDate(dates[dates.length-1])}</h2>
+    <div class="cards">
+      ${opening?`<div class="card"><div class="k">Hall money held at start</div><div class="v">${money(opening)}</div></div>`:''}
+      <div class="card"><div class="k">Hall money received (A)</div><div class="v in">${money(A)}</div><div class="small muted">${hallIn.length} transactions</div></div>
+      <div class="card"><div class="k">Hall spending (B)</div><div class="v out">${money(B)}</div><div class="small muted">Bank ${money(outBank)} · Card ${money(outCard)}${outCash?' · Cash '+money(outCash):''}</div></div>
+      <div class="card big ${C>=0?'pos':'neg'}"><div class="k">${C>=0?'Hall money you should be holding':'Hall owes you'}</div><div class="v">${money(Math.abs(C))}</div><div class="small muted">${opening?'start + ':''}A − B</div></div>
+    </div>
+    <div class="verdict">${verdict}</div>
+    ${uns.length?`<div class="hint">⚠️ <b>Not final yet:</b> ${uns.length} transactions are still unsure (${money(unsOut)} out, ${money(unsIn)} in). Depending on how they're sorted, the answer could be anywhere from <b>${money(low)}</b> to <b>${money(high)}</b> (a negative figure means the hall owes you). <a href="#" onclick="showTab('review');return false">Sort them →</a></div>`:''}
+    ${noCat?`<div class="hint">🏷️ ${noCat} hall expenses have no category yet. Filter "All transactions" by 🏠 Hall to add them.</div>`:''}
+    <p class="small muted">Hall purchases on your credit card count as hall spending. Your credit card bill payments are marked as <b>transfers</b> so they aren't counted twice. ${transfers.length} transfers (${money(sum(transfers))}) are left out of the totals. Personal: ${pers.length} transactions (${money(sum(pers.filter(t=>t.dir==='out')))} spent).</p>
+  </div>
+  <div class="cols2">
+    <div class="panel"><h3>Hall spending by category</h3>${barTable(groupSum(hallOut, t=>t.category||'Uncategorised'), B, 'Category')}</div>
+    <div class="panel"><h3>Hall spending by event</h3>${barTable(groupSum(hallOut.filter(t=>t.event), t=>t.event), B, 'Event')}
+      <p class="small muted">${money(sum(hallOut.filter(t=>!t.event)))} isn't linked to an event.</p></div>
+    <div class="panel"><h3>By month</h3><table><thead><tr><th>Month</th><th class="num">Hall in</th><th class="num">Hall out</th></tr></thead><tbody>${
+      [...new Set(hall.map(t=>t.date.slice(0,7)))].sort().map(m=>`<tr><td>${monthLabel(m)}</td><td class="num in">${money(sum(hallIn.filter(t=>t.date.startsWith(m))))}</td><td class="num out">${money(sum(hallOut.filter(t=>t.date.startsWith(m))))}</td></tr>`).join('') || '<tr><td colspan="3" class="muted">Nothing yet.</td></tr>'}
+    </tbody></table></div>
+    <div class="panel"><h3>Hall money received</h3>${hallIn.length?`<table><tbody>${hallIn.sort(byDate).map(t=>`<tr><td style="white-space:nowrap">${niceDate(t.date)}</td><td>${esc(t.desc)}${t.note?`<div class="small muted">${esc(t.note)}</div>`:''}</td><td class="num in">${money(t.amount)}</td></tr>`).join('')}</tbody></table>`:'<p class="muted small">No money in has been marked as Hall yet. If the hall fund or contributions came into your account, find those entries and mark them 🏠 Hall.</p>'}</div>
+  </div>`;
+}
+$('#opening').addEventListener('change', e=>{ state.settings.opening = r2(parseFloat(e.target.value)||0); commit(); });
+$('#printBtn').onclick = ()=>window.print();
+function exportRows(list, withOwner){
+  const head = ['Date','Description','Direction','Amount', ...(withOwner?['Belongs to']:[]),'Category','Event','Paid via','Note'];
+  return [head, ...list.sort(byDate).map(t=>[t.date, t.desc, t.dir==='out'?'Out':'In', t.amount.toFixed(2), ...(withOwner?[t.owner]:[]), t.category, t.event, t.source, t.note])];
+}
+$('#exportHallBtn').onclick = ()=>download('hall-transactions.csv', toCSV(exportRows(state.txns.filter(t=>t.owner==='hall'), false)), 'text/csv');
+$('#exportAllBtn').onclick = ()=>download('all-transactions-sorted.csv', toCSV(exportRows([...state.txns], true)), 'text/csv');
+
+/* ============================================================
+   SETTINGS
+   ============================================================ */
+function renderSettings(){
+  $('#ruleCat').innerHTML = catOptions('', '— category —');
+  $('#catText').value = state.categories.join('\n');
+  $('#currency').value = state.settings.currency;
+  $('#ruleList').innerHTML = state.rules.length ? `<div class="table-wrap" style="max-height:52vh"><table><thead><tr><th>Contains</th><th>Becomes</th><th class="num">Matches</th><th></th></tr></thead><tbody>${
+    state.rules.map(r=>`<tr><td>${esc(r.text)}</td><td><span class="pill ${r.owner}">${OWNERS[r.owner]}</span>${r.category?` <span class="tag">${esc(r.category)}</span>`:''}</td>
+      <td class="num">${state.txns.filter(t=>t.byRule===r.id).length}</td><td><button class="danger" data-rule="${r.id}">Delete</button></td></tr>`).join('')}</tbody></table></div>`
+    : '<p class="muted">No rules yet.</p>';
+}
+$('#ruleList').addEventListener('click', e=>{ const id=e.target.dataset.rule; if(!id) return; state.rules=state.rules.filter(r=>r.id!==id); applyRules(); commit(); });
+$('#ruleAdd').onclick = ()=>{
+  const txt=$('#ruleText').value.trim(); if(!txt) return;
+  addRule(txt, $('#ruleOwner').value, $('#ruleCat').value); applyRules(); $('#ruleText').value=''; commit();
+};
+$('#catSave').onclick = ()=>{
+  const cats = [...new Set($('#catText').value.split('\n').map(s=>s.trim()).filter(Boolean))];
+  if(cats.length) state.categories = cats;
+  state.settings.currency = $('#currency').value.trim() || '₹';
+  commit(); toast('Saved.');
+};
+$('#backupBtn').onclick = ()=>download(`hall-money-backup-${new Date().toISOString().slice(0,10)}.json`, JSON.stringify(state,null,1), 'application/json');
+$('#restoreInput').addEventListener('change', async e=>{
+  const f = e.target.files[0]; e.target.value=''; if(!f) return;
+  try{
+    const s = JSON.parse(await f.text());
+    if(!s || !Array.isArray(s.txns)) throw new Error();
+    if(!confirm(`Replace everything here with the backup (${s.txns.length} transactions)?`)) return;
+    state = Object.assign(fresh(), s, {settings:Object.assign(fresh().settings, s.settings||{})});
+    commit(); toast('Backup restored.');
+  }catch(err){ alert("That file doesn't look like a Hall Money Sorter backup."); }
+});
+$('#resetBtn').onclick = ()=>{
+  if(!confirm('Erase ALL imported transactions, sorting and rules from this browser?')) return;
+  if(!confirm('Are you sure? Download a backup first if you might need this later.')) return;
+  state = fresh(); commit();
+};
+
+/* ---------- start ---------- */
+showTab(currentTab);
+if(state.txns.length){ try{ localStorage.getItem(LS_KEY); $('#savedMsg').textContent='Saved on this computer'; }catch(e){} }
+</script>
+</body>
+</html>
